@@ -17,6 +17,10 @@ DB_PATH = os.path.join(_BASE_DIR, "data", "petgpt.db")
 # ── 연결 ───────────────────────────────────────────────────────────
 def get_conn():
     """Streamlit 의 멀티스레드 환경에서 안전하게 동작하도록 옵션을 준다."""
+    # data/ 폴더가 없으면 먼저 만든다.
+    # (Streamlit Cloud 등 폴더가 보장되지 않는 환경 대비 안전 장치)
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     # 결과를 dict 처럼 row["name"] 으로 꺼낼 수 있게
     conn.row_factory = sqlite3.Row
@@ -261,4 +265,9 @@ def delete_record(record_id):
             (record_id, current_user_id()),
         )
 
+
+# ── 모듈 import 시 자동 초기화 ─────────────────────────────────────
+# 어떤 페이지로 직접 진입하든(예: /health) 테이블이 보장되도록,
+# db.py 가 처음 import 되는 시점에 한 번 init_db() 를 호출한다.
+# init_db() 내부에서 CREATE TABLE IF NOT EXISTS 를 쓰므로 중복 호출도 안전.
 init_db()
