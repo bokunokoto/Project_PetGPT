@@ -1,0 +1,12 @@
+# SQLite DB 파일
+data/petgpt.db
+data/petgpt.db-journal
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# IDE
+.vscode/
+.idea/
