@@ -1,7 +1,10 @@
 import streamlit as st
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import auth
 from db import upsert_pet
+
+auth.login_widget()
 
 st.title("🥗 건강한 맞춤 식단 매니저")
 st.write("우리 아이의 상태를 입력하면 하루 권장 칼로리와 영양 가이드를 계산해 드립니다.")

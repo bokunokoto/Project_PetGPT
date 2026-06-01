@@ -1,4 +1,9 @@
 import streamlit as st
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import auth
+
+auth.login_widget()
 
 st.title("🏠 나에게 꼭 맞는 가족 찾기")
 st.write("간단한 설문을 통해 운명의 반려동물을 추천해 드립니다.")

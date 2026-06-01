@@ -2,8 +2,11 @@ import streamlit as st
 from datetime import date, timedelta
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import auth
 from db import (get_pets, get_schedules, add_schedule, complete_schedule,
                 get_records, add_record, delete_record)
+
+auth.login_widget()
 
 st.title("📒 건강 수첩")
 st.write("예방접종·구충 같은 반복 일정부터 병원 진료 내용까지, "

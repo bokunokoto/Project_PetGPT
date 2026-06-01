@@ -1,55 +1,262 @@
+"""SQLite 데이터 접근 계층.
+
+페이지들은 이 모듈의 함수만 호출하면 되고, SQL 을 직접 다루지 않는다.
+나중에 카카오 로그인을 붙일 때는 current_user_id() 만 바꿔주면 된다.
+"""
+import os
+import sqlite3
+from datetime import date, datetime
+
 import streamlit as st
-from db import init_db, get_pets
 
-st.set_page_config(
-    page_title="Pet-GPT: 반려동물 통합 케어",
-    page_icon="🐾",
-    layout="wide",
-)
-
-# 앱 진입 시 한 번만 호출되면 충분. SQLite 는 가벼우니 매 실행 호출해도 부담 없음.
-init_db()
+# ── DB 파일 위치 ────────────────────────────────────────────────────
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(_BASE_DIR, "data", "petgpt.db")
 
 
-st.title("🐾 반려동물 생애주기 통합 관리 서비스")
-st.subheader("입양부터 마지막 순간까지, Pet-GPT가 함께합니다.")
-st.info("왼쪽 사이드바 메뉴를 선택하여 각 서비스를 이용해 보세요.")
+# ── 연결 ───────────────────────────────────────────────────────────
+def get_conn():
+    """Streamlit 의 멀티스레드 환경에서 안전하게 동작하도록 옵션을 준다."""
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    # 결과를 dict 처럼 row["name"] 으로 꺼낼 수 있게
+    conn.row_factory = sqlite3.Row
+    # 외래키 제약 활성화 (SQLite 는 기본 꺼져 있음)
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
 
-st.divider()
 
-# ── 서비스 한눈에 보기 ──────────────────────────────────────────────
-st.markdown("### 제공 서비스")
+# ── 스키마 초기화 ───────────────────────────────────────────────────
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    auth_kind   TEXT NOT NULL DEFAULT 'local',  -- 'local' (가짜 로그인) | 'kakao' | 'guest'
+    external_id TEXT,                            -- local: 닉네임 / kakao: 카카오 user id
+    kakao_id    TEXT UNIQUE,                     -- (호환용) 카카오 user id; external_id 와 중복돼도 OK
+    nickname    TEXT,
+    created_at  TEXT DEFAULT (datetime('now')),
+    UNIQUE (auth_kind, external_id)
+);
 
-c1, c2, c3 = st.columns(3)
-with c1:
-    st.markdown("#### 🏠 가족 찾기")
-    st.caption("설문 기반으로 나에게 맞는 반려동물을 추천")
-with c2:
-    st.markdown("#### 🥗 맞춤 식단")
-    st.caption("나이·몸무게로 하루 권장 칼로리를 계산")
-with c3:
-    st.markdown("#### 📒 건강 수첩")
-    st.caption("케어 일정과 병원 진료 기록을 관리")
+CREATE TABLE IF NOT EXISTS pets (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    name        TEXT NOT NULL,
+    species     TEXT,                        -- '강아지' / '고양이'
+    age         INTEGER,
+    weight      REAL,
+    neutered    INTEGER DEFAULT 0,           -- bool 대용 (0/1)
+    mer         INTEGER,                     -- 최근 계산된 하루 권장 칼로리
+    created_at  TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 
-c4, c5, c6 = st.columns(3)
-with c4:
-    st.markdown("#### 🛍️ 용품점 찾기")
-    st.caption("내 주변 펫 용품점을 거리순으로 안내")
-with c5:
-    st.markdown("#### 🕯️ 마지막 안녕")
-    st.caption("내 주변 반려동물 장례식장 안내")
-with c6:
-    st.markdown("#### 🐶 내 반려동물")
-    st.caption("등록한 프로필을 사이드바에서 확인")
+CREATE TABLE IF NOT EXISTS schedules (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    pet_id      INTEGER,                     -- 반려동물이 안 골라져 있을 수도 있어 NULL 허용
+    care_type   TEXT NOT NULL,               -- '예방접종' 등
+    last_done   TEXT NOT NULL,               -- ISO 날짜 문자열
+    cycle_days  INTEGER DEFAULT 0,           -- 0 이면 1회성
+    next_due    TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (pet_id)  REFERENCES pets(id)  ON DELETE SET NULL
+);
 
-st.divider()
+CREATE TABLE IF NOT EXISTS records (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL,
+    pet_id       INTEGER,
+    visit_date   TEXT NOT NULL,
+    hospital     TEXT,
+    visit_type   TEXT,                       -- '일반 진료' 등
+    weight       REAL,
+    cost         INTEGER DEFAULT 0,
+    diagnosis    TEXT,
+    prescription TEXT,
+    memo         TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (pet_id)  REFERENCES pets(id)  ON DELETE SET NULL
+);
+"""
 
-# ── 사이드바: DB 에서 반려동물 목록을 매번 읽어와 표시 ──────────────
-with st.sidebar:
-    st.markdown("### 🐶 내 반려동물")
-    pets = get_pets()
-    if pets:
-        for p in pets:
-            st.write(f"- **{p['name']}** ({p['age']}세 / {p['weight']}kg)")
-    else:
-        st.caption("아직 등록된 반려동물이 없어요.\n'맞춤 식단' 페이지에서 등록해 보세요.")
+
+def init_db():
+    """앱 시작 시 한 번 호출. 테이블이 없으면 만들고, 익명 사용자도 보장한다."""
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    with get_conn() as conn:
+        conn.executescript(SCHEMA)
+        # 익명 사용자(id=1) 가 없으면 만든다.
+        # 로그인 안 하고 들어온 방문자가 이 사용자 소유로 데이터를 쌓는다.
+        conn.execute(
+            """INSERT OR IGNORE INTO users (id, auth_kind, external_id, nickname)
+               VALUES (1, 'guest', 'guest', '게스트')"""
+        )
+
+
+def current_user_id():
+    """현재 로그인된 사용자 ID. 로그인 안 했으면 게스트(1) 반환.
+
+    세션 키는 auth.py 에서 채워준다.
+    """
+    return st.session_state.get("user_id", 1)
+
+
+def get_or_create_user(kind: str, external_id: str, nickname: str) -> int:
+    """auth_kind + external_id 로 사용자를 찾고, 없으면 만든다.
+
+    가짜 로그인:  kind='local',  external_id=<닉네임>
+    카카오 로그인: kind='kakao', external_id=<카카오 user id>
+
+    페이지 코드가 이 함수만 알면 되도록, 인증 종류별 분기는 여기 안에 가둔다.
+    """
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id FROM users WHERE auth_kind = ? AND external_id = ?",
+            (kind, external_id),
+        ).fetchone()
+        if row:
+            # 닉네임이 바뀌었을 수 있으니 가볍게 갱신
+            conn.execute("UPDATE users SET nickname = ? WHERE id = ?",
+                         (nickname, row["id"]))
+            return row["id"]
+
+        cur = conn.execute(
+            """INSERT INTO users (auth_kind, external_id, kakao_id, nickname)
+               VALUES (?, ?, ?, ?)""",
+            (kind, external_id,
+             external_id if kind == "kakao" else None,
+             nickname),
+        )
+        return cur.lastrowid
+
+
+# ── pets ───────────────────────────────────────────────────────────
+def get_pets():
+    """현재 사용자의 반려동물 목록을 dict 리스트로 반환."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM pets WHERE user_id = ? ORDER BY created_at",
+            (current_user_id(),),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def upsert_pet(name, species, age, weight, neutered, mer):
+    """같은 이름의 반려동물이 있으면 갱신, 없으면 추가."""
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT id FROM pets WHERE user_id = ? AND name = ?",
+            (current_user_id(), name),
+        ).fetchone()
+
+        if existing:
+            conn.execute(
+                """UPDATE pets
+                   SET species=?, age=?, weight=?, neutered=?, mer=?
+                   WHERE id=?""",
+                (species, age, weight, int(neutered), mer, existing["id"]),
+            )
+            return existing["id"]
+        else:
+            cur = conn.execute(
+                """INSERT INTO pets (user_id, name, species, age, weight, neutered, mer)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (current_user_id(), name, species, age, weight, int(neutered), mer),
+            )
+            return cur.lastrowid
+
+
+def delete_pet(pet_id):
+    with get_conn() as conn:
+        conn.execute(
+            "DELETE FROM pets WHERE id = ? AND user_id = ?",
+            (pet_id, current_user_id()),
+        )
+
+
+# ── schedules ──────────────────────────────────────────────────────
+def _to_iso(d):
+    """date 객체든 문자열이든 ISO 문자열로 통일."""
+    return d.isoformat() if isinstance(d, (date, datetime)) else str(d)
+
+
+def get_schedules():
+    """다가오는 순서로 정렬된 일정 목록. 반려동물 이름도 JOIN 으로 같이 가져온다."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT s.*, p.name AS pet_name
+               FROM schedules s
+               LEFT JOIN pets p ON p.id = s.pet_id
+               WHERE s.user_id = ?
+               ORDER BY s.next_due""",
+            (current_user_id(),),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def add_schedule(pet_id, care_type, last_done, cycle_days, next_due):
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO schedules
+               (user_id, pet_id, care_type, last_done, cycle_days, next_due)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (current_user_id(), pet_id, care_type,
+             _to_iso(last_done), cycle_days, _to_iso(next_due)),
+        )
+
+
+def complete_schedule(schedule_id, today, cycle_days):
+    """완료 처리: 주기가 있으면 다음 날짜로 갱신, 없으면 삭제."""
+    from datetime import timedelta
+    with get_conn() as conn:
+        if cycle_days:
+            new_next = today + timedelta(days=cycle_days)
+            conn.execute(
+                "UPDATE schedules SET last_done=?, next_due=? WHERE id=? AND user_id=?",
+                (_to_iso(today), _to_iso(new_next), schedule_id, current_user_id()),
+            )
+        else:
+            conn.execute(
+                "DELETE FROM schedules WHERE id=? AND user_id=?",
+                (schedule_id, current_user_id()),
+            )
+
+
+# ── records ────────────────────────────────────────────────────────
+def get_records(pet_id=None):
+    """진료 기록을 최신순으로. pet_id 주면 그 반려동물 것만."""
+    sql = """SELECT r.*, p.name AS pet_name
+             FROM records r
+             LEFT JOIN pets p ON p.id = r.pet_id
+             WHERE r.user_id = ?"""
+    params = [current_user_id()]
+    if pet_id is not None:
+        sql += " AND r.pet_id = ?"
+        params.append(pet_id)
+    sql += " ORDER BY r.visit_date DESC, r.id DESC"
+
+    with get_conn() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def add_record(pet_id, visit_date, hospital, visit_type, weight, cost,
+               diagnosis, prescription, memo):
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT INTO records
+               (user_id, pet_id, visit_date, hospital, visit_type,
+                weight, cost, diagnosis, prescription, memo)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (current_user_id(), pet_id, _to_iso(visit_date),
+             hospital, visit_type, weight, cost,
+             diagnosis, prescription, memo),
+        )
+
+
+def delete_record(record_id):
+    with get_conn() as conn:
+        conn.execute(
+            "DELETE FROM records WHERE id=? AND user_id=?",
+            (record_id, current_user_id()),
+        )

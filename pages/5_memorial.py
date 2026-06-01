@@ -2,7 +2,10 @@ import streamlit as st
 
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import auth
 from utils import load_places, region_selectors, filter_places, render_results
+
+auth.login_widget()
 
 st.title("🕯️ 따뜻한 마지막 안녕")
 st.write("내 위치(시/군/구/동)를 선택하면 가까운 반려동물 장례식장을 지도에 표시해 드립니다.")

@@ -29,9 +29,12 @@ def get_conn():
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    kakao_id    TEXT UNIQUE,                 -- 카카오 로그인 붙이면 채워짐
+    auth_kind   TEXT NOT NULL DEFAULT 'local',  -- 'local' (가짜 로그인) | 'kakao' | 'guest'
+    external_id TEXT,                            -- local: 닉네임 / kakao: 카카오 user id
+    kakao_id    TEXT UNIQUE,                     -- (호환용) 카카오 user id; external_id 와 중복돼도 OK
     nickname    TEXT,
-    created_at  TEXT DEFAULT (datetime('now'))
+    created_at  TEXT DEFAULT (datetime('now')),
+    UNIQUE (auth_kind, external_id)
 );
 
 CREATE TABLE IF NOT EXISTS pets (
@@ -83,18 +86,48 @@ def init_db():
     with get_conn() as conn:
         conn.executescript(SCHEMA)
         # 익명 사용자(id=1) 가 없으면 만든다.
-        # 로그인 붙이기 전까지 모든 데이터는 이 사용자 소유로 저장됨.
+        # 로그인 안 하고 들어온 방문자가 이 사용자 소유로 데이터를 쌓는다.
         conn.execute(
-            "INSERT OR IGNORE INTO users (id, nickname) VALUES (1, '게스트')"
+            """INSERT OR IGNORE INTO users (id, auth_kind, external_id, nickname)
+               VALUES (1, 'guest', 'guest', '게스트')"""
         )
 
 
 def current_user_id():
-    """현재 사용자 ID. 로그인 도입 전이라 일단 게스트(1) 고정.
+    """현재 로그인된 사용자 ID. 로그인 안 했으면 게스트(1) 반환.
 
-    카카오 로그인을 붙이면 st.session_state['user_id'] 를 보고 반환하도록 바꾼다.
+    세션 키는 auth.py 에서 채워준다.
     """
     return st.session_state.get("user_id", 1)
+
+
+def get_or_create_user(kind: str, external_id: str, nickname: str) -> int:
+    """auth_kind + external_id 로 사용자를 찾고, 없으면 만든다.
+
+    가짜 로그인:  kind='local',  external_id=<닉네임>
+    카카오 로그인: kind='kakao', external_id=<카카오 user id>
+
+    페이지 코드가 이 함수만 알면 되도록, 인증 종류별 분기는 여기 안에 가둔다.
+    """
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id FROM users WHERE auth_kind = ? AND external_id = ?",
+            (kind, external_id),
+        ).fetchone()
+        if row:
+            # 닉네임이 바뀌었을 수 있으니 가볍게 갱신
+            conn.execute("UPDATE users SET nickname = ? WHERE id = ?",
+                         (nickname, row["id"]))
+            return row["id"]
+
+        cur = conn.execute(
+            """INSERT INTO users (auth_kind, external_id, kakao_id, nickname)
+               VALUES (?, ?, ?, ?)""",
+            (kind, external_id,
+             external_id if kind == "kakao" else None,
+             nickname),
+        )
+        return cur.lastrowid
 
 
 # ── pets ───────────────────────────────────────────────────────────
