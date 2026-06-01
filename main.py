@@ -260,3 +260,5 @@ def delete_record(record_id):
             "DELETE FROM records WHERE id=? AND user_id=?",
             (record_id, current_user_id()),
         )
+
+init_db()
