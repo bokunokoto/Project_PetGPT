@@ -30,7 +30,7 @@ def pet_picker(label, key, allow_text=True):
 
 
 # ════════════════════════════════════════════════════════════════════
-# 탭 1. 케어 일정
+# 탭 1. 케어 일정 (수정된 코드)
 # ════════════════════════════════════════════════════════════════════
 with tab_schedule:
     st.subheader("➕ 일정 추가")
@@ -43,44 +43,23 @@ with tab_schedule:
             ["예방접종", "심장사상충 약", "구충", "목욕/미용", "건강검진", "생일", "기타"],
         )
     with col2:
-        last_done = st.date_input("최근 시행일", value=date.today())
-        cycle_days = st.number_input("반복 주기 (일)", min_value=0, max_value=365,
-                                     value=30, step=1,
-                                     help="0이면 1회성 일정입니다.")
+        # 수정됨: 최근 시행일 -> 일정 예정일
+        due_date = st.date_input("일정 예정일", value=date.today())
+        
+        # 수정됨: 반복 주기 분리 (radio 버튼 사용)
+        repeat_option = st.radio("반복 여부", ["없음", "있음"], horizontal=True)
+        cycle_days = 0
+        if repeat_option == "있음":
+            cycle_days = st.number_input("반복 주기 (일)", min_value=1, max_value=365, value=30, step=1)
 
     if st.button("일정 등록", type="primary", key="add_schedule"):
-        next_due = last_done + timedelta(days=cycle_days) if cycle_days else last_done
-        add_schedule(sch_pet_id, care_type, last_done, cycle_days, next_due)
+        # '없음'이면 0, '있음'이면 입력받은 cycle_days 사용
+        final_cycle = cycle_days if repeat_option == "있음" else 0
+        
+        # '최근 시행일' 개념이 없어졌으므로, 등록일 자체가 예정일(next_due)이 됨
+        add_schedule(sch_pet_id, care_type, due_date, final_cycle, due_date)
         st.success(f"'{care_type}' 일정이 등록되었어요.")
         st.rerun()
-
-    st.divider()
-
-    st.subheader("🔔 다가오는 일정")
-    schedules = get_schedules()
-    if not schedules:
-        st.caption("아직 등록된 일정이 없어요.")
-    else:
-        today = date.today()
-        for s in schedules:
-            next_due = date.fromisoformat(s["next_due"])
-            d_day = (next_due - today).days
-            if d_day < 0:
-                label = f"🔴 {-d_day}일 지남"
-            elif d_day == 0:
-                label = "🟠 오늘"
-            elif d_day <= 7:
-                label = f"🟡 D-{d_day}"
-            else:
-                label = f"🟢 D-{d_day}"
-
-            with st.container(border=True):
-                c1, c2, c3 = st.columns([3, 2, 1])
-                c1.write(f"**{s['pet_name'] or '미지정'}** · {s['care_type']}")
-                c2.write(f"예정일: {next_due}  {label}")
-                if c3.button("완료", key=f"done_{s['id']}"):
-                    complete_schedule(s["id"], today, s["cycle_days"])
-                    st.rerun()
 
 
 # ════════════════════════════════════════════════════════════════════
