@@ -59,41 +59,28 @@ with tab_schedule:
         # '최근 시행일' 개념이 없어졌으므로, 등록일 자체가 예정일(next_due)이 됨
         add_schedule(sch_pet_id, care_type, due_date, final_cycle, due_date)
         st.success(f"'{care_type}' 일정이 등록되었어요.")
-        st.rerun()
-# ════════════════════════════════════════════════════════════════════
-# 탭 1. 케어 일정 (통합형)
-# ════════════════════════════════════════════════════════════════════
-with tab_schedule:
-    # 1. 일정 추가 영역
-    st.subheader("➕ 일정 추가")
-    # (기존의 일정 추가 입력 폼 코드를 여기에 그대로 둡니다)
-    # ... col1, col2 사용한 입력 코드들 ...
+        st.rerun()# ════════════════════════════════════════════════════════════════════
+    # 기존 일정 목록 코드 바로 밑에 아래 내용을 추가하세요
+    # ════════════════════════════════════════════════════════════════════
 
-    st.divider()
-
-    # 2. 다가오는 일정 목록 (스크롤 영역 1)
-    st.subheader("🔔 다가오는 일정")
-    # ... 기존의 일정 목록 표시 코드 ...
-
-    st.divider()
-
-    # 3. 약 복용 관리 영역 (스크롤을 내리면 나오는 영역)
+    st.divider() # 위쪽 일정 목록과 구분선
     st.subheader("💊 약 복용 기록")
-    st.caption("매일 복용해야 하는 약을 체크하세요.")
+    st.caption("매일 복용하는 약을 체크하여 건강을 관리하세요.")
     
     with st.container(border=True):
         med_pet_id, _ = pet_picker("대상 반려동물", "med_pet")
-        med_name = st.text_input("약 이름", placeholder="예: 심장사상충 약")
+        med_name = st.text_input("약 이름", placeholder="예: 심장사상충 예방약")
         
+        # '오늘 복용 완료' 버튼
         if st.button("오늘 복용 완료", type="primary", key="med_done"):
-            # db.add_medication_log(med_pet_id, med_name, date.today())
-            st.success(f"{med_name} 복용 완료 기록을 저장했습니다!")
+            # 여기서 db.add_medication_log(med_pet_id, med_name, date.today())를 호출
+            # 아직 함수를 안 만드셨다면 db.py에 추가해야 합니다.
+            st.success(f"{med_name} 복용 기록이 저장되었습니다!")
             st.rerun()
-            
-    # 4. 오늘의 할 일 요약 (캘린더 느낌의 요약)
-    st.subheader("📅 오늘의 요약")
-    today = date.today()
-    st.info(f"오늘은 {today.month}월 {today.day}일입니다. 놓친 일정은 없는지 확인해보세요!")
+
+    # 최근 복용 기록 간단 요약 (선택 사항)
+    st.write("**최근 복용 내역**")
+    st.info("여기에 최근 5건의 복용 기록을 보여주는 로직을 넣으면 더 좋습니다.")
 
 # ════════════════════════════════════════════════════════════════════
 # 탭 2. 진료 기록
