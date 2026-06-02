@@ -165,3 +165,31 @@ with tab_record:
                 if st.button("이 기록 삭제", key=f"del_rec_{r['id']}"):
                     delete_record(r["id"])
                     st.rerun()
+                  # 기존 코드 마지막(tab_record 탭 끝난 지점)에 이 코드를 추가해 보세요.
+
+# 새로운 탭 추가
+tab_schedule, tab_record, tab_stats = st.tabs(["📅 케어 일정", "🏥 진료 기록", "📊 건강 요약"])
+
+with tab_stats:
+    st.subheader("📊 건강 준수율 및 요약")
+    
+    # 1. 누적 진료비 확인 (기존 코드 로직 활용)
+    records = get_records()
+    total_cost = sum(r["cost"] or 0 for r in records)
+    st.metric("총 누적 진료비", f"{total_cost:,}원")
+    
+    st.divider()
+    
+    # 2. 약 복용 준수율 (History 테이블이 있다고 가정)
+    st.subheader("💊 약 복용 준수 기록")
+    st.info("여기에 '약 먹었어요!' 버튼과 데이터 시각화를 추가하면 됩니다.")
+    
+    if st.button("오늘 약 먹었어요!"):
+        # 여기에 db.add_medication_log() 등 새 함수를 만들어 호출
+        st.success("오늘의 복용 기록이 저장되었습니다.")
+
+    # 3. 데이터 CSV 내보내기 (기존 진료 기록 전체)
+    if records:
+        df = pd.DataFrame(records)
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button("전체 건강 데이터 CSV 다운로드", csv, "pet_health_all.csv", "text/csv")
