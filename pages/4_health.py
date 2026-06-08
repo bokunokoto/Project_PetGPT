@@ -165,34 +165,39 @@ with tab_record:
                 if st.button("이 기록 삭제", key=f"del_rec_{r['id']}"):
                     delete_record(r["id"])
                     st.rerun()
-                  # ════════════════════════════════════════════════════════════════════
-# 탭 3. 투약 관리 (추가된 부분)
+# ════════════════════════════════════════════════════════════════════
+# 탭 3. 투약 관리 (DB 수정 없이 구현한 할 일 목록)
 # ════════════════════════════════════════════════════════════════════
 with tab_medication:
-    st.subheader("💊 투약 관리 및 알림")
-    st.caption("매일 챙겨야 하는 약(영양제, 처방약 등)의 복용 여부를 체크하고 준수율을 확인하세요.")
-
-    # 1. 대상 반려동물 선택
-    med_pet_id, pet_name = pet_picker("대상 반려동물", "med_pet")
+    st.subheader("💊 매일 먹어야 할 약 (Todo List)")
     
+    # 1. 약 정보 입력
+    with st.form("med_form"):
+        col1, col2 = st.columns(2)
+        med_name = col1.text_input("약 이름", placeholder="예: 관절 영양제")
+        end_date = col2.date_input("복용 종료일")
+        
+        submitted = st.form_submit_button("목록에 추가")
+        if submitted and med_name:
+            if "med_list" not in st.session_state:
+                st.session_state.med_list = []
+            st.session_state.med_list.append({"name": med_name, "end": end_date})
+            st.success(f"'{med_name}' 추가 완료!")
+
     st.divider()
 
-    # 2. 오늘의 복용 체크 (요구사항: 사용자가 '복용 완료'를 누르면 History 테이블에 기록)
-    st.markdown(f"#### ✅ {pet_name}의 오늘 투약 체크")
-    
-    # 예시용 약 이름 입력 (실제로는 DB에서 현재 복용 중인 약 목록을 불러와야 함)
-    med_name = st.text_input("복용할 약 이름", placeholder="예: 심장약, 관절 영양제")
-    
-    if st.button("복용 완료 기록하기", type="primary", key="med_done"):
-        if med_name.strip():
-            # TODO: 여기에 History 테이블에 기록하는 DB 함수를 연결해야 합니다.
-            # 예: add_medication_history(med_pet_id, med_name, date.today())
-            st.success(f"오늘({date.today()}) {med_name} 복용 기록이 저장되었습니다! 📈")
-        else:
-            st.warning("약 이름을 입력해 주세요.")
-            
-    st.divider()
-    
-    # 3. 복용 준수율 통계 (요구사항: 복용 준수율 통계 제공)
-    st.markdown("#### 📊 복용 준수율 통계")
-    st.info("준수율 시각화 및 예정일 알림 기능이 여기에 들어갑니다.")
+    # 2. Todo List 표시
+    if "med_list" in st.session_state:
+        for idx, med in enumerate(st.session_state.med_list):
+            if med["end"] >= date.today():
+                c1, c2 = st.columns([4, 1])
+                c1.write(f"✅ **{med['name']}** (~{med['end']}까지)")
+                if c2.button("삭제", key=f"del_{idx}"):
+                    st.session_state.med_list.pop(idx)
+                    st.rerun()
+            else:
+                # 종료일이 지난 약은 자동으로 리스트에서 제거하거나 표시하지 않음
+                pass
+    else:
+        st.caption("아직 등록된 약이 없어요.")
+
