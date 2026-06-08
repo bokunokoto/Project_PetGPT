@@ -217,7 +217,8 @@ with tab_medication:
                 st.rerun()
     else:
         st.caption("등록된 약이 없습니다.")
-      with tab_medication:
+      
+  with tab_medication:
     st.subheader("💊 맞춤형 투약 스케줄러")
 
     # 1. 약 등록 섹션
