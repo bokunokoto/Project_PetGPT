@@ -166,64 +166,59 @@ with tab_record:
                     delete_record(r["id"])
                     st.rerun()
 with tab_medication:
-    st.subheader("💊 맞춤형 투약 스케줄러")
+    st.subheader("💊 맞춤형 투약 관리")
 
-    # 1. 약 등록 섹션
-    with st.form("med_add_form", clear_on_submit=True):
-        new_med = st.text_input("약 이름", placeholder="예: 심장약")
-        unit = st.radio("복용 주기 단위", ["매일", "주 단위", "월 단위"], horizontal=True)
+    # 1. 약 등록 폼
+    with st.form("med_form", clear_on_submit=True):
+        med_name = st.text_input("약 이름", placeholder="예: 심장약")
         
-        # 주 단위 선택 시
-        days_of_week = []
-        if unit == "주 단위":
-            days_of_week = st.multiselect("요일 선택", ["월", "화", "수", "목", "금", "토", "일"])
+        col1, col2 = st.columns(2)
+        repeat_cycle = col1.selectbox("반복 주기", ["매일", "매주", "2주마다", "매월", "매년"])
+        end_date = col2.date_input("반복 종료일")
         
-        # 월 단위 선택 시
-        day_of_month = None
-        if unit == "월 단위":
-            day_of_month = st.number_input("매월 며칠에 복용할지 입력 (1-31)", min_value=1, max_value=31, value=1)
-
-        end_date = st.date_input("복용 종료일")
-        
-        if st.form_submit_button("일정 추가하기"):
-            if new_med:
+        if st.form_submit_button("추가하기"):
+            if med_name:
                 if "med_list" not in st.session_state: st.session_state.med_list = []
                 st.session_state.med_list.append({
-                    "name": new_med, "end": end_date, "unit": unit,
-                    "days": days_of_week, "date": day_of_month
+                    "name": med_name, "cycle": repeat_cycle, "end": end_date, "start": date.today()
                 })
                 st.rerun()
 
     st.divider()
 
-    # 2. 오늘 복용 체크 섹션
+    # 2. 오늘 먹을 약 (체크박스 포함)
     st.markdown("### ✅ 오늘 먹어야 할 약")
     today = date.today()
-    day_map = {"월": 0, "화": 1, "수": 2, "목": 3, "금": 4, "토": 5, "일": 6}
-
+    
     if "med_list" in st.session_state:
+        # 날짜 변경 시 체크 초기화
+        if "last_date" not in st.session_state or st.session_state.last_date != today:
+            st.session_state.checked = []
+            st.session_state.last_date = today
+
         for idx, med in enumerate(st.session_state.med_list):
             if med["end"] >= today:
+                # 주기 로직
+                diff = (today - med["start"]).days
                 should_take = False
-                if med["unit"] == "매일": should_take = True
-                elif med["unit"] == "주 단위":
-                    current_day_name = ["월", "화", "수", "목", "금", "토", "일"][today.weekday()]
-                    should_take = current_day_name in med["days"]
-                elif med["unit"] == "월 단위":
-                    should_take = (today.day == med["date"])
+                if med["cycle"] == "매일": should_take = True
+                elif med["cycle"] == "매주": should_take = (diff % 7 == 0)
+                elif med["cycle"] == "2주마다": should_take = (diff % 14 == 0)
+                elif med["cycle"] == "매월": should_take = (today.day == med["start"].day)
+                elif med["cycle"] == "매년": should_take = (today.month == med["start"].month and today.day == med["start"].day)
 
                 if should_take:
-                    # 체크박스 상태 유지 (날짜 바뀌면 초기화)
-                    if "last_check_date" not in st.session_state or st.session_state.last_check_date != today:
-                        st.session_state.checked_meds = []
-                        st.session_state.last_check_date = today
-                    
-                    is_checked = st.checkbox(f"{med['name']} ({med['unit']})", key=f"check_{idx}", 
-                                             value=idx in st.session_state.checked_meds)
-                    if is_checked and idx not in st.session_state.checked_meds: st.session_state.checked_meds.append(idx)
-                    elif not is_checked and idx in st.session_state.checked_meds: st.session_state.checked_meds.remove(idx)
-        
+                    # 체크박스 구현
+                    is_checked = st.checkbox(f"{med['name']} ({med['cycle']})", key=f"check_{idx}", 
+                                             value=idx in st.session_state.checked)
+                    if is_checked and idx not in st.session_state.checked: st.session_state.checked.append(idx)
+                    elif not is_checked and idx in st.session_state.checked: st.session_state.checked.remove(idx)
+
+        # 삭제 버튼들
         st.write("---")
         for idx, med in enumerate(st.session_state.med_list):
             if st.button(f"삭제: {med['name']}", key=f"del_{idx}"):
-                st.session_state.med_list.pop(idx); st.rerun()
+                st.session_state.med_list.pop(idx)
+                st.rerun()
+    else:
+        st.caption("등록된 약이 없습니다.")
