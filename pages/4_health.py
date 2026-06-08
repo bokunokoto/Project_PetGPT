@@ -4,7 +4,8 @@ import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import auth
 from db import (get_pets, get_schedules, add_schedule, complete_schedule,
-                get_records, add_record, delete_record)
+                get_records, add_record, delete_record,
+                get_medications, complete_medication, get_medication_history, add_medication)
 
 auth.login_widget()
 
