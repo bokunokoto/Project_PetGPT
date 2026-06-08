@@ -165,60 +165,10 @@ with tab_record:
                 if st.button("이 기록 삭제", key=f"del_rec_{r['id']}"):
                     delete_record(r["id"])
                     st.rerun()
+# ════════════════════════════════════════════════════════════════════
+# 탭 3. 투약 관리
+# ════════════════════════════════════════════════════════════════════
 with tab_medication:
-    st.subheader("💊 매일 먹어야 할 약 (Todo List)")
-
-    # 1. 약 등록 섹션
-    with st.form("med_add_form", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        new_med = col1.text_input("약 이름", placeholder="예: 심장 영양제")
-        end_date = col2.date_input("복용 종료일")
-        if st.form_submit_button("목록에 추가"):
-            if new_med:
-                if "med_list" not in st.session_state:
-                    st.session_state.med_list = []
-                st.session_state.med_list.append({"name": new_med, "end": end_date})
-                st.rerun()
-
-    st.divider()
-
-    # 2. 오늘 복용 체크 섹션 (매일 날짜가 바뀌면 체크가 풀림)
-    st.markdown("### ✅ 오늘의 투약 체크")
-    today = date.today()
-    
-    # 날짜가 바뀌었을 때 체크 초기화 로직
-    if "last_check_date" not in st.session_state:
-        st.session_state.last_check_date = today
-        st.session_state.checked_meds = []
-    if st.session_state.last_check_date != today:
-        st.session_state.last_check_date = today
-        st.session_state.checked_meds = []
-
-    if "med_list" in st.session_state and st.session_state.med_list:
-        for idx, med in enumerate(st.session_state.med_list):
-            if med["end"] >= today:
-                # 체크박스 상태를 세션과 동기화
-                is_checked = st.checkbox(
-                    f"{med['name']} (~{med['end']}까지)", 
-                    key=f"check_{idx}",
-                    value=idx in st.session_state.checked_meds
-                )
-                
-                if is_checked and idx not in st.session_state.checked_meds:
-                    st.session_state.checked_meds.append(idx)
-                elif not is_checked and idx in st.session_state.checked_meds:
-                    st.session_state.checked_meds.remove(idx)
-            
-        # 삭제 버튼 (개별 삭제)
-        st.write("---")
-        for idx, med in enumerate(st.session_state.med_list):
-            if st.button(f"삭제: {med['name']}", key=f"del_{idx}"):
-                st.session_state.med_list.pop(idx)
-                st.rerun()
-    else:
-        st.caption("등록된 약이 없습니다.")
-      
-  with tab_medication:
     st.subheader("💊 맞춤형 투약 스케줄러")
 
     # 1. 약 등록 섹션
@@ -254,7 +204,7 @@ with tab_medication:
 
         for idx, med in enumerate(st.session_state.med_list):
             if med["end"] >= today:
-                # 주기 계산 로직 (간단 구현)
+                # 주기 계산 로직
                 days_passed = (today - med["added_date"]).days
                 should_take = False
                 if med["cycle"] == "매일": should_take = True
@@ -263,6 +213,7 @@ with tab_medication:
                 elif med["cycle"] == "일주일 1번": should_take = (days_passed % 7 == 0)
 
                 if should_take:
+                    # 체크박스
                     is_checked = st.checkbox(
                         f"{med['name']} ({med['cycle']})", 
                         key=f"check_{idx}",
