@@ -359,6 +359,102 @@ def get_medication_history(med_id=None):
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
+    import sqlite3
+from datetime import date
+
+def init_medication_db():
+    """투약 관리 관련 테이블이 없을 경우 생성합니다."""
+    conn = sqlite3.connect("pet_care.db")
+    cursor = conn.cursor()
+    
+    # 1. 투약 일정 기본 테이블
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS medications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pet_id INTEGER,
+            med_name TEXT NOT NULL,
+            dosage TEXT,
+            dosage_time TEXT,
+            start_date TEXT,
+            cycle_days INTEGER
+        )
+    """)
+    
+    # 2. 투약 완료 히스토리 테이블 (복용 준수율 통계용)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS medication_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            med_id INTEGER,
+            check_date TEXT NOT NULL,
+            FOREIGN KEY(med_id) REFERENCES medications(id) ON DELETE CASCADE
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def add_medication(pet_id, med_name, dosage, dosage_time, start_date, cycle_days):
+    """새로운 투약 일정을 등록합니다."""
+    conn = sqlite3.connect("pet_care.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO medications (pet_id, med_name, dosage, dosage_time, start_date, cycle_days)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (pet_id, med_name, dosage, dosage_time, str(start_date), cycle_days))
+    conn.commit()
+    conn.close()
+
+def get_medications(pet_id=None):
+    """등록된 투약 일정 목록을 가져옵니다."""
+    conn = sqlite3.connect("pet_care.db")
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    # 반려동물 이름까지 함께 가져오기 위해 JOIN 사용
+    query = """
+        SELECT m.*, p.name as pet_name 
+        FROM medications m
+        LEFT JOIN pets p ON m.pet_id = p.id
+    """
+    if pet_id:
+        query += " WHERE m.pet_id = ?"
+        cursor.execute(query, (pet_id,))
+    else:
+        cursor.execute(query)
+        
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def complete_medication(med_id, check_date):
+    """오늘 약을 먹었다고 체크하면 히스토리에 기록합니다."""
+    conn = sqlite3.connect("pet_care.db")
+    cursor = conn.cursor()
+    
+    # 중복 체크 방지
+    cursor.execute("""
+        SELECT id FROM medication_history WHERE med_id = ? AND check_date = ?
+    """, (med_id, str(check_date)))
+    
+    if not cursor.fetchone():
+        cursor.execute("""
+            INSERT INTO medication_history (med_id, check_date)
+            VALUES (?, ?)
+        """, (med_id, str(check_date)))
+        conn.commit()
+    conn.close()
+
+def get_medication_history(med_id=None):
+    """투약 기록 히스토리를 가져옵니다."""
+    conn = sqlite3.connect("pet_care.db")
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    if med_id:
+        cursor.execute("SELECT * FROM medication_history WHERE med_id = ? ORDER BY check_date DESC", (med_id,))
+    else:
+        cursor.execute("SELECT * FROM medication_history ORDER BY check_date DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 # ── 모듈 import 시 자동 초기화 ─────────────────────────────────────
