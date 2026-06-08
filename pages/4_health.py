@@ -165,39 +165,55 @@ with tab_record:
                 if st.button("이 기록 삭제", key=f"del_rec_{r['id']}"):
                     delete_record(r["id"])
                     st.rerun()
-# ════════════════════════════════════════════════════════════════════
-# 탭 3. 투약 관리 (DB 수정 없이 구현한 할 일 목록)
-# ════════════════════════════════════════════════════════════════════
 with tab_medication:
     st.subheader("💊 매일 먹어야 할 약 (Todo List)")
-    
-    # 1. 약 정보 입력
-    with st.form("med_form"):
+
+    # 1. 약 등록 섹션
+    with st.form("med_add_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
-        med_name = col1.text_input("약 이름", placeholder="예: 관절 영양제")
+        new_med = col1.text_input("약 이름", placeholder="예: 심장 영양제")
         end_date = col2.date_input("복용 종료일")
-        
-        submitted = st.form_submit_button("목록에 추가")
-        if submitted and med_name:
-            if "med_list" not in st.session_state:
-                st.session_state.med_list = []
-            st.session_state.med_list.append({"name": med_name, "end": end_date})
-            st.success(f"'{med_name}' 추가 완료!")
+        if st.form_submit_button("목록에 추가"):
+            if new_med:
+                if "med_list" not in st.session_state:
+                    st.session_state.med_list = []
+                st.session_state.med_list.append({"name": new_med, "end": end_date})
+                st.rerun()
 
     st.divider()
 
-    # 2. Todo List 표시
-    if "med_list" in st.session_state:
-        for idx, med in enumerate(st.session_state.med_list):
-            if med["end"] >= date.today():
-                c1, c2 = st.columns([4, 1])
-                c1.write(f"✅ **{med['name']}** (~{med['end']}까지)")
-                if c2.button("삭제", key=f"del_{idx}"):
-                    st.session_state.med_list.pop(idx)
-                    st.rerun()
-            else:
-                # 종료일이 지난 약은 자동으로 리스트에서 제거하거나 표시하지 않음
-                pass
-    else:
-        st.caption("아직 등록된 약이 없어요.")
+    # 2. 오늘 복용 체크 섹션 (매일 날짜가 바뀌면 체크가 풀림)
+    st.markdown("### ✅ 오늘의 투약 체크")
+    today = date.today()
+    
+    # 날짜가 바뀌었을 때 체크 초기화 로직
+    if "last_check_date" not in st.session_state:
+        st.session_state.last_check_date = today
+        st.session_state.checked_meds = []
+    if st.session_state.last_check_date != today:
+        st.session_state.last_check_date = today
+        st.session_state.checked_meds = []
 
+    if "med_list" in st.session_state and st.session_state.med_list:
+        for idx, med in enumerate(st.session_state.med_list):
+            if med["end"] >= today:
+                # 체크박스 상태를 세션과 동기화
+                is_checked = st.checkbox(
+                    f"{med['name']} (~{med['end']}까지)", 
+                    key=f"check_{idx}",
+                    value=idx in st.session_state.checked_meds
+                )
+                
+                if is_checked and idx not in st.session_state.checked_meds:
+                    st.session_state.checked_meds.append(idx)
+                elif not is_checked and idx in st.session_state.checked_meds:
+                    st.session_state.checked_meds.remove(idx)
+            
+        # 삭제 버튼 (개별 삭제)
+        st.write("---")
+        for idx, med in enumerate(st.session_state.med_list):
+            if st.button(f"삭제: {med['name']}", key=f"del_{idx}"):
+                st.session_state.med_list.pop(idx)
+                st.rerun()
+    else:
+        st.caption("등록된 약이 없습니다.")
