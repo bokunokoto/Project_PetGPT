@@ -196,3 +196,102 @@ with tab_medication:
     # 3. 복용 준수율 통계 (요구사항: 복용 준수율 통계 제공)
     st.markdown("#### 📊 복용 준수율 통계")
     st.info("준수율 시각화 및 예정일 알림 기능이 여기에 들어갑니다.")
+  # db.py에서 새로 만든 함수들을 상단 import에 추가해 주세요!
+# from db import (..., add_medication, get_medications, complete_medication, get_medication_history)
+
+with tab_medication:
+    st.subheader("💊 오늘의 투약 알림 & 체크리스트")
+    st.caption("오늘 우리 아이가 먹어야 할 약을 확인하고 복용 완료 버튼을 눌러주세요.")
+
+    today = date.today()
+    all_meds = get_medications()
+    
+    # 1. 오늘 복용해야 하는 약 필터링 및 알림 (Todo 기능)
+    today_tasks = []
+    for med in all_meds:
+        # 1회성이거나, 주기적인 약인 경우 오늘 날짜에 해당하는지 계산
+        start_dt = date.fromisoformat(med["start_date"])
+        if med["cycle_days"] == 0 and start_dt == today:
+            today_tasks.append(med)
+        elif med["cycle_days"] > 0 and (today - start_dt).days % med["cycle_days"] == 0 and today >= start_dt:
+            today_tasks.append(med)
+
+    # 오늘 먹은 약 목록 가져오기
+    history_rows = get_medication_history()
+    today_completed_ids = [h["med_id"] for h in history_rows if h["check_date"] == str(today)]
+
+    # 실시간 알림 방송 기능 (푸시 알림 대안: 페이지 접속 시 토스트/경고 배너)
+    incomplete_count = len(today_tasks) - len(today_completed_ids)
+    if incomplete_count > 0:
+        st.error(f"🔔 오늘 아직 복용하지 않은 약이 {incomplete_count}개 있습니다! 잊지 말고 챙겨주세요.")
+    else:
+        st.balloons()
+        st.success("🎉 오늘 예정된 모든 투약을 완료했습니다! 훌륭해요.")
+
+    # Todo 형태의 체크리스트 UI 출력
+    st.write("")
+    if not today_tasks:
+        st.info("오늘 예정된 투약 일정이 없습니다.")
+    else:
+        for med in today_tasks:
+            is_done = med["id"] in today_completed_ids
+            
+            with st.container(border=True):
+                c1, c2, c3 = st.columns([3, 2, 1])
+                
+                # 완료 여부에 따른 텍스트 표시 변환
+                if is_done:
+                    c1.markdown(f"~~**[{med['pet_name'] or '미지정'}]** {med['med_name']} ({med['dosage']})~~")
+                    c2.markdown(f"~~🕒 {med['dosage_time']} · 복용 완료~~")
+                    c3.button("완료됨", key=f"med_comp_{med['id']}", disabled=True)
+                else:
+                    c1.markdown(f"**[{med['pet_name'] or '미지정'}]** {med['med_name']} ({med['dosage']})")
+                    c2.markdown(f"🕒 **{med['dosage_time']}** 에 먹여야 해요!")
+                    if c3.button("복용 완료", key=f"med_do_{med['id']}", type="primary"):
+                        complete_medication(med["id"], today)
+                        st.toast(f" {med['med_name']} 복용 기록이 History에 저장되었습니다.", icon="✅")
+                        st.rerun()
+
+    st.divider()
+
+    # 2. 새 투약 일정 등록 폼
+    st.subheader("➕ 새 투약 일정 등록")
+    with st.form("medication_form", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            med_pet_id, _ = pet_picker("대상 반려동물", "med_add_pet")
+            med_name = st.text_input("약 / 영양제 이름", placeholder="예: 하트가드, 슬개골 영양제")
+            dosage = st.text_input("복용량 / 방법", placeholder="예: 1포, 반 알, 식후 30분")
+        with col2:
+            dosage_time = st.text_input("복용 시간 안내", placeholder="예: 아침 8시, 저녁 식후")
+            start_date_input = st.date_input("투약 시작일", value=today)
+            cycle_choice = st.selectbox(
+                "복용 주기", 
+                ["매일", "일주일마다", "한 달마다 (30일)", "1회성 일정"],
+                index=0
+            )
+            
+        # 주기 텍스트를 일수(days) 숫자로 변환
+        cycle_mapping = {"매일": 1, "일주일마다": 7, "한 달마다 (30일)": 30, "1회성 일정": 0}
+        cycle_days = cycle_mapping[cycle_choice]
+
+        submit = st.form_submit_button("일정 추가하기", type="primary")
+        if submit:
+            if not med_name.strip():
+                st.warning("약 이름을 입력해 주세요.")
+            else:
+                add_medication(med_pet_id, med_name.strip(), dosage.strip(), dosage_time.strip(), start_date_input, cycle_days)
+                st.success(f"'{med_name}' 투약 스케줄이 성공적으로 등록되었습니다.")
+                st.rerun()
+
+    st.divider()
+
+    # 3. 달력 대용: 전체 투약 스케줄 리스트 확인
+    st.subheader("📅 등록된 전체 투약 스케줄")
+    all_registered_meds = get_medications()
+    if not all_registered_meds:
+        st.caption("등록된 스케줄이 없습니다.")
+    else:
+        for m in all_registered_meds:
+            cycle_text = f"{m['cycle_days']}일마다" if m['cycle_days'] > 0 else "1회성"
+            st.text(f"• [{m['pet_name'] or '미지정'}] {m['med_name']} | {m['dosage']} | {m['dosage_time']} ({cycle_text}, 시작일: {m['start_date']})")
