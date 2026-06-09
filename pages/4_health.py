@@ -102,29 +102,44 @@ with tab_medication:
             st.session_state.med_list.append({"name": med_name, "cycle": cycle, "opt": sub_opt, "end": end_date})
             st.rerun()
 
+   # 2. 오늘 복용 체크 섹션 (수정된 로직)
     st.markdown("### ✅ 오늘 먹어야 할 약")
     today = date.today()
     
     if "med_list" in st.session_state:
-        # 이전에 체크된 항목들을 기억하기 위한 세션 추가
-        if "checked_indices" not in st.session_state:
-            st.session_state.checked_indices = set()
+        # 체크박스 상태 변경을 추적할 세션
+        if "checked_state" not in st.session_state:
+            st.session_state.checked_state = {}
 
         for idx, med in enumerate(st.session_state.med_list):
             if med["end"] >= today:
-                # ... (should_take 로직은 그대로 유지) ...
+                # ... (should_take 계산 로직은 동일) ...
+                opt = med.get("opt")
+                should_take = False
+                if med["cycle"] == "매일": should_take = True
+                elif med["cycle"] == "매주" and opt:
+                    curr_day = ["월","화","수","목","금","토","일"][today.weekday()]
+                    should_take = curr_day in opt
+                elif med["cycle"] == "매월" and opt: should_take = (today.day == opt)
+                elif med["cycle"] == "매년" and opt: should_take = (today.month == opt.month and today.day == opt.day)
                 
-                # 체크박스 상태 확인
-                is_checked = st.checkbox(f"{med['name']} ({med['cycle']})", key=f"check_{idx}")
-                
-                # '새로' 체크된 경우에만 toast 발생
-                if is_checked and idx not in st.session_state.checked_indices:
-                    st.toast(f"{med['name']} 복용 완료! 잘하셨어요 🐾", icon="✅")
-                    st.session_state.checked_indices.add(idx)
-                
-                # 체크 해제된 경우 세션에서 제거
-                elif not is_checked and idx in st.session_state.checked_indices:
-                    st.session_state.checked_indices.remove(idx)
+                if should_take:
+                    # 현재 체크박스 상태
+                    key = f"check_{idx}"
+                    was_checked = st.session_state.checked_state.get(key, False)
+                    
+                    # 체크박스 렌더링
+                    is_checked = st.checkbox(f"{med['name']} ({med['cycle']})", key=key)
+                    
+                    # 상태가 False -> True로 바뀌는 순간에만 토스트 발생!
+                    if is_checked and not was_checked:
+                        st.toast(f"{med['name']} 복용 완료! 잘하셨어요 🐾", icon="✅")
+                    
+                    # 현재 상태 저장
+                    st.session_state.checked_state[key] = is_checked
+        
+        st.write("---")
+        # 삭제 버튼 로직... (동일)
         
         st.write("---")
         for idx, med in enumerate(st.session_state.med_list):
