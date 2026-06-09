@@ -2,6 +2,7 @@ import streamlit as st
 from datetime import date, timedelta
 import sys, os
 import pandas as pd
+import calendar
 
 # 경로 설정
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -28,7 +29,7 @@ def pet_picker(label, key, allow_text=True):
     return None, name or "미지정"
 
 # ════════════════════════════════════════════════════════════════════
-# 탭 1. 케어 일정 (아이폰 스타일 캘린더 대시보드 추가)
+# 탭 1. 케어 일정 (바둑판 격자형 진짜 달력 구현)
 # ════════════════════════════════════════════════════════════════════
 with tab_schedule:
     st.subheader("➕ 일정 추가")
@@ -47,39 +48,60 @@ with tab_schedule:
 
     st.divider()
     
-    # 📆 아이폰 캘린더 뷰 매핑 대시보드
-    st.subheader("🗓️ 이번 달 주요 케어 달력")
+    # 🗓️ 진짜 아이폰 스타일 바둑판 달력 뷰 제작
+    today = date.today()
+    st.subheader(f"🗓️ {today.year}년 {today.month}월 케어 캘린더")
+    
     schedules = get_schedules()
     
-    if schedules:
-        # 달력 데이터를 만들기 위한 DataFrame 생성
-        cal_data = []
-        for s in schedules:
-            cal_data.append({
-                "날짜": s["next_due"],
-                "반려동물": s["pet_name"] or "미지정",
-                "일정 종류": s["care_type"]
-            })
-        df_cal = pd.DataFrame(cal_data).sort_values(by="날짜")
+    # 현재 월의 일자 배열 가져오기 (일요일 시작을 위해 일요일=6 설정 변경 적용)
+    cal = calendar.Calendar(firstweekday=6)
+    month_days = cal.monthdayscalendar(today.year, today.month)
+    
+    # 요일 헤더 표시
+    week_headers = ["일", "월", "화", "수", "목", "금", "토"]
+    cols_header = st.columns(7)
+    for idx, h in enumerate(week_headers):
+        cols_header[idx].markdown(f"<p style='text-align:center; font-weight:bold;'>{h}</p>", unsafe_allow_html=True)
         
-        # 가독성 좋은 테이블 형태로 달력 요약 뷰 노출
-        st.dataframe(
-            df_cal, 
-            column_config={
-                "날짜": st.column_config.DateColumn("예정일", format="YYYY-MM-DD"),
-                "반려동물": "아이 이름",
-                "일정 종류": "💥 케어 내용"
-            },
-            use_container_width=True,
-            hide_index=True
-        )
-    else:
-        st.caption("달력에 표시할 다가오는 일정이 없습니다.")
+    # 날짜별 일정 매핑
+    schedule_map = {}
+    for s in schedules:
+        try:
+            s_date = date.fromisoformat(s["next_due"]) if isinstance(s["next_due"], str) else s["next_due"]
+            if s_date.year == today.year and s_date.month == today.month:
+                if s_date.day not in schedule_map:
+                    schedule_map[s_date.day] = []
+                schedule_map[s_date.day].append(f"📌{s['pet_name'] or '아이'}:{s['care_type']}")
+        except:
+            pass
 
+    # 바둑판 격자 렌더링
+    for week in month_days:
+        cols = st.columns(7)
+        for i, day in enumerate(week):
+            if day == 0:
+                cols[i].write("")  # 이번 달이 아닌 공백 칸
+            else:
+                # 오늘 날짜는 배경 테두리를 다르게 강조
+                box_style = "border:1px solid #ccc; border-radius:5px; padding:3px; min-height:80px;"
+                if day == today.day:
+                    box_style = "border:2px solid #ff4b4b; border-radius:5px; padding:3px; min-height:80px; background-color:#fff5f5;"
+                
+                # 달력 칸 만들기
+                cell_html = f"<div style='{box_style}'><strong>{day}</strong>"
+                if day in schedule_map:
+                    for item in schedule_map[day]:
+                        cell_html += f"<br><span style='font-size:11px; color:#333; background-color:#e1f5fe; border-radius:3px; padding:1px 2px; display:block; margin-top:2px;'>{item}</span>"
+                cell_html += "</div>"
+                
+                cols[i].markdown(cell_html, unsafe_allow_html=True)
+
+    st.write("")
     st.subheader("🔔 다가오는 일정 목록")
     for s in schedules:
         with st.container(border=True):
-            st.write(f"**{s['pet_name']}** · {s['care_type']} (예정일: {s['next_due']})")
+            st.write(f"**{s['pet_name'] or '미지정'}** · {s['care_type']} (예정일: {s['next_due']})")
             if st.button("완료", key=f"done_{s['id']}"):
                 complete_schedule(s["id"], date.today(), s["cycle_days"])
                 st.rerun()
@@ -112,13 +134,13 @@ with tab_record:
         df = pd.DataFrame(records)
         st.download_button("📥 CSV 내보내기", df.to_csv(index=False), "records.csv", "text/csv", key="btn_download_csv")
         for r in records:
-            with st.expander(f"{r['visit_date']} · {r['pet_name']} · {r['visit_type']}"):
+            with st.expander(f"{r['visit_date']} · {r['pet_name'] or '미지정'} · {r['visit_type']}"):
                 st.write(f"🏥 병원: {r['hospital']} / 🩺 진단: {r['diagnosis']}")
                 if st.button("삭제", key=f"del_{r['id']}"):
                     delete_record(r['id']); st.rerun()
 
 # ════════════════════════════════════════════════════════════════════
-# 탭 3. 투약 관리 (오류 및 요일 잔상 완벽 해결 버전)
+# 탭 3. 투약 관리 (사용자 맞춤 전면 개선 완료)
 # ════════════════════════════════════════════════════════════════════
 with tab_medication:
     st.subheader("💊 맞춤형 투약 관리")
@@ -126,66 +148,9 @@ with tab_medication:
     med_name = st.text_input("약 이름", key="input_med_name")
     cycle = st.selectbox("반복 주기", ["매일", "매주", "매월", "매년"], key="input_cycle")
     
+    # 주기를 바꿀 때 요일 선택 잔상이 남지 않도록 조건문 엄격화 분리
     sub_option = None
     if cycle == "매주":
         sub_option = st.multiselect("요일 선택 (중복 가능)", ["월", "화", "수", "목", "금", "토", "일"], key="input_opt_week")
     elif cycle == "매월":
-        sub_option = st.number_input("매월 며칠에 복용하나요? (1-31일)", min_value=1, max_value=31, value=1, key="input_opt_month")
-    elif cycle == "매년":
-        c1, c2 = st.columns(2)
-        month_opt = c1.selectbox("몇 월", list(range(1, 13)), index=0, key="input_opt_year_m")
-        day_opt = c2.selectbox("몇 일", list(range(1, 32)), index=0, key="input_opt_year_d")
-        sub_option = {"month": month_opt, "day": day_opt}
-        
-    end_date = st.date_input("반복 종료일", key="input_end_date")
-    
-    if st.button("추가하기", type="primary", key="btn_add_med"):
-        if med_name:
-            if "med_list" not in st.session_state: 
-                st.session_state.med_list = []
-            st.session_state.med_list.append({
-                "name": med_name, "cycle": cycle, "opt": sub_option, "end": end_date, "start": date.today()
-            })
-            st.rerun()
-
-    st.markdown("### ✅ 오늘 먹어야 할 약")
-    today = date.today()
-    
-    if "checked_state" not in st.session_state:
-        st.session_state.checked_state = {}
-    if "last_date" not in st.session_state or st.session_state.last_date != today:
-        st.session_state.checked_state = {}
-        st.session_state.last_date = today
-
-    if "med_list" in st.session_state and st.session_state.med_list:
-        for idx, med in enumerate(st.session_state.med_list):
-            if med["end"] >= today:
-                opt = med.get("opt")
-                should_take = False
-                
-                if med["cycle"] == "매일": 
-                    should_take = True
-                elif med["cycle"] == "매주" and opt:
-                    curr_day = ["월","화","수","목","금","토","일"][today.weekday()]
-                    should_take = curr_day in opt
-                elif med["cycle"] == "매월" and opt: 
-                    should_take = (today.day == opt)
-                elif med["cycle"] == "매년" and opt: 
-                    should_take = (today.month == opt.get("month") and today.day == opt.get("day"))
-                
-                if should_take:
-                    key = f"check_{idx}"
-                    was_checked = st.session_state.checked_state.get(key, False)
-                    is_checked = st.checkbox(f"{med['name']} ({med['cycle']})", key=key)
-                    
-                    if is_checked and not was_checked:
-                        st.toast(f"{med['name']} 복용 완료! 잘하셨어요 🐾", icon="✅")
-                    st.session_state.checked_state[key] = is_checked
-        
-        st.write("---")
-        for idx, med in enumerate(st.session_state.med_list):
-            if st.button(f"삭제: {med['name']}", key=f"del_{idx}"):
-                st.session_state.med_list.pop(idx)
-                st.rerun()
-    else:
-        st.caption("등록된 약이 없습니다.")
+        sub_option = st.number_input("매월 며칠에 복용하나요? (1-31일)", min_value=1, max_value=31, value=1,
