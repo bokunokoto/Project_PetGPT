@@ -118,7 +118,7 @@ with tab_medication:
                 
                 if should_take:
                     if st.checkbox(f"{med['name']} ({med['cycle']})", key=f"check_{idx}"):
-                        st.toast(f"{med['name']} 복용 완료! 잘하셨어요 🐾", icon="✅")
+                        st.toast(f"{med['name']}  복용 완료! 🐾", icon="✅")
         
         st.write("---")
         for idx, med in enumerate(st.session_state.med_list):
