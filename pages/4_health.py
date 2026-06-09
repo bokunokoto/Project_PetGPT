@@ -14,7 +14,7 @@ from db import (get_pets, get_schedules, add_schedule, complete_schedule,
 if "completed_schedule_ids" not in st.session_state:
     st.session_state.completed_schedule_ids = set()
 
-# 아이폰 스타일 날짜 선택 저장을 위한 세션 상태 초기화 (기본값: 오늘)
+# 클릭한 날짜 저장을 위한 세션 상태 초기화 (기본값: 오늘 날짜)
 if "selected_calendar_day" not in st.session_state:
     st.session_state.selected_calendar_day = date.today().day
 
@@ -37,7 +37,7 @@ def pet_picker(label, key, allow_text=True):
     return None, name or "미지정"
 
 # ════════════════════════════════════════════════════════════════════
-# 탭 1. 케어 일정 (플랫 세련된 격자형 클릭 캘린더 구현)
+# 탭 1. 케어 일정 (네모 블록 전체가 버튼인 진짜 플랫 캘린더)
 # ════════════════════════════════════════════════════════════════════
 with tab_schedule:
     st.subheader("➕ 일정 추가")
@@ -68,14 +68,14 @@ with tab_schedule:
     cal = calendar.Calendar(firstweekday=6)
     month_days = cal.monthdayscalendar(today.year, today.month)
     
-    # 요일 헤더 표시 (세련된 차콜 앤 그레이 스타일)
+    # 요일 헤더 표시 (세련된 차콜 앤 그레이 플랫 스타일)
     week_headers = ["일", "월", "화", "수", "목", "금", "토"]
     cols_header = st.columns(7)
     for idx, h in enumerate(week_headers):
         color_style = "color:#555555;"
         if h == "일": color_style = "color:#e03e2d;"
         elif h == "토": color_style = "color:#2b6cb0;"
-        cols_header[idx].markdown(f"<p style='text-align:center; font-weight:700; margin-bottom:8px; font-size:14px; {color_style}'>{h}</p>", unsafe_allow_html=True)
+        cols_header[idx].markdown(f"<p style='text-align:center; font-weight:700; margin-bottom:10px; font-size:14px; {color_style}'>{h}</p>", unsafe_allow_html=True)
         
     # 날짜별 일정 매핑 (달력용 간단 뷰)
     schedule_map = {}
@@ -89,7 +89,20 @@ with tab_schedule:
         except:
             pass
 
-    # 바둑판 격자 화면 출력 (선택 버튼 삭제 및 클릭 연동용 컴포넌트 전면 개조)
+    # 스타일 설정을 위한 custom CSS 주입 (Streamlit 기본 버튼의 둥근 테두리를 깎고 커스텀 사각형 달력으로 매핑)
+    st.markdown("""
+        <style>
+        div.stButton > button {
+            border-radius: 0px !important;
+            padding: 6px !important;
+            text-align: left !important;
+            align-items: flex-start !important;
+            justify-content: flex-start !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # 바둑판 격자 화면 출력 (네모 박스 자체를 클릭 가능한 단일 컴포넌트로 완전 통합)
     for week in month_days:
         cols = st.columns(7)
         for i, day in enumerate(week):
@@ -98,39 +111,37 @@ with tab_schedule:
             else:
                 is_selected = (st.session_state.selected_calendar_day == day)
                 
-                # 완전히 각지고 깔끔한 모던 실버 플랫 테두리 및 단색 매칭
-                box_style = "border:1px solid #e1e1e1; padding:6px; min-height:85px; background-color:#ffffff;"
-                
-                if day == today.day:
-                    # 오늘 날짜: 애플 인디고 블루 포인트 선형 테두리
-                    box_style = "border:2px solid #007aff; padding:6px; min-height:85px; background-color:#f4f9ff;"
-                elif is_selected:
-                    # 선택된 날짜: 선명하고 트렌디한 다크 챠콜 플랫 테두리
-                    box_style = "border:2px solid #222222; padding:6px; min-height:85px; background-color:#f9f9f9;"
-                
-                cell_html = f"<div style='{box_style}'><span style='font-size:13px; font-weight:600; color:#333;'>{day}</span>"
+                # 달력 내부에 들어갈 텍스트 구성 (날짜 숫자 + 간단 일정 라벨)
+                button_content = f"{day}\n"
                 if day in schedule_map:
                     for s in schedule_map[day]:
-                        # 각진 라벨 형태로 달력 내부에 미니멀하게 표출
-                        cell_html += f"<div style='font-size:10px; color:#1a202c; background-color:#edf2f7; border-left:3px solid #4a5568; padding:2px 4px; margin-top:4px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;'>{s['care_type']}</div>"
-                cell_html += "</div>"
+                        button_content += f"\n📎 {s['care_type']}"
                 
-                # 마크다운으로 깔끔한 사각형 모양 상자를 출력
-                cols[i].markdown(cell_html, unsafe_allow_html=True)
+                # 오늘 및 선택 여부에 따라 버튼의 강조 스타일 색상 적용 (각진 플랫 실버)
+                if day == today.day:
+                    # 오늘 날짜: 세련된 파스텔 블루 배경
+                    btn_type = "secondary"
+                    st.markdown(f"<style>#root div[data-testid='stHorizontalBlock'] div:nth-child({i+1}) button {{ border: 2px solid #007aff !important; background-color: #f4f9ff !important; }}</style>", unsafe_allow_html=True)
+                elif is_selected:
+                    # 선택된 날짜: 선명한 다크 챠콜 플랫 테두리
+                    btn_type = "primary"
+                else:
+                    # 일반 날짜: 군더더기 없는 각진 흰색 실버 박스
+                    btn_type = "secondary"
                 
-                # [선택] 칸 글자는 완전히 없애고 투명하게 블록 전체를 버튼 영역화
-                if cols[i].button(f"📅 {day}일", key=f"click_day_{day}", use_container_width=True):
+                # 별도의 글자나 [선택] 칸 없이 네모 블록 전체를 버튼화하여 클릭 시 연동 구현!
+                if cols[i].button(button_content, key=f"square_day_{day}", type=btn_type, use_container_width=True):
                     st.session_state.selected_calendar_day = day
                     st.rerun()
 
-    # 📋 달력 사각형 클릭 시 하단 상세 정보 활성화 섹션
+    # 📋 바둑판 사각형 네모 블록 클릭 시 하단 상세 정보 활성화 섹션
     sel_day = st.session_state.selected_calendar_day
     st.write("")
-    st.markdown(f"#### 🔍 선택한 {sel_day}일의 상세 기록 목록")
+    st.markdown(f"#### 🔍 {sel_day}일 상세 일정 기록 목록")
     
     day_schedules = schedule_map.get(sel_day, [])
     if not day_schedules:
-        st.caption("해당 날짜에 잡혀있는 일정이 없습니다. 달력의 일정을 누르면 상세 조회가 가능합니다.")
+        st.caption("선택한 날짜에 예정된 케어 일정이 없습니다. 달력의 사각형 블록을 클릭해 보세요.")
     else:
         for s in day_schedules:
             with st.container(border=True):
