@@ -54,4 +54,164 @@ with tab_schedule:
     
     schedules = get_schedules()
     
-    # 현재 월의 일자 배열 가져오기 (일요일 시작
+    # 현재 월의 일자 배열 가져오기 (일요일 시작을 위해 firstweekday=6 적용)
+    cal = calendar.Calendar(firstweekday=6)
+    month_days = cal.monthdayscalendar(today.year, today.month)
+    
+    # 요일 헤더 표시
+    week_headers = ["일", "월", "화", "수", "목", "금", "토"]
+    cols_header = st.columns(7)
+    for idx, h in enumerate(week_headers):
+        cols_header[idx].markdown(f"<p style='text-align:center; font-weight:bold; margin-bottom:5px;'>{h}</p>", unsafe_allow_html=True)
+        
+    # 날짜별 일정 매핑
+    schedule_map = {}
+    for s in schedules:
+        try:
+            s_date = date.fromisoformat(s["next_due"]) if isinstance(s["next_due"], str) else s["next_due"]
+            if s_date.year == today.year and s_date.month == today.month:
+                if s_date.day not in schedule_map:
+                    schedule_map[s_date.day] = []
+                schedule_map[s_date.day].append(f"📌 {s['pet_name'] or '아이'}: {s['care_type']}")
+        except:
+            pass
+
+    # 바둑판 격자 렌더링
+    for week in month_days:
+        cols = st.columns(7)
+        for i, day in enumerate(week):
+            if day == 0:
+                cols[i].write("")  # 이번 달이 아닌 공백 칸
+            else:
+                # 오늘 날짜는 테두리를 빨간색으로 다르게 강조
+                box_style = "border:1px solid #ccc; border-radius:5px; padding:5px; min-height:85px; width:100%;"
+                if day == today.day:
+                    box_style = "border:2px solid #ff4b4b; border-radius:5px; padding:5px; min-height:85px; background-color:#fff5f5; width:100%;"
+                
+                # 달력 칸 마크다운 생성
+                cell_html = f"<div style='{box_style}'><strong>{day}</strong>"
+                if day in schedule_map:
+                    for item in schedule_map[day]:
+                        cell_html += f"<div style='font-size:11px; color:#333; background-color:#e1f5fe; border-radius:3px; padding:2px; margin-top:3px; word-break:break-all;'>{item}</div>"
+                cell_html += "</div>"
+                
+                cols[i].markdown(cell_html, unsafe_allow_html=True)
+
+    st.write("")
+    st.subheader("🔔 다가오는 일정 목록")
+    for s in schedules:
+        with st.container(border=True):
+            st.write(f"**{s['pet_name'] or '미지정'}** · {s['care_type']} (예정일: {s['next_due']})")
+            if st.button("완료", key=f"done_{s['id']}"):
+                complete_schedule(s["id"], date.today(), s["cycle_days"])
+                st.rerun()
+
+# ════════════════════════════════════════════════════════════════════
+# 탭 2. 진료 기록
+# ════════════════════════════════════════════════════════════════════
+with tab_record:
+    st.subheader("🏥 진료 기록 추가")
+    col1, col2 = st.columns(2)
+    with col1:
+        rec_pet_id, _ = pet_picker("대상 반려동물", "rec_pet")
+        visit_date = st.date_input("진료일", value=date.today(), key="rec_visit_date")
+        hospital = st.text_input("병원 이름", key="rec_hospital")
+    with col2:
+        visit_type = st.selectbox("진료 유형", ["일반 진료", "예방접종", "정기검진", "수술", "응급", "치과", "기타"], key="rec_visit_type")
+        cost = st.number_input("진료비 (원)", min_value=0, step=1000, key="rec_cost")
+
+    diagnosis = st.text_input("진단 / 증상", key="rec_diagnosis")
+    prescription = st.text_area("처방 / 약", key="rec_prescription")
+    memo = st.text_area("메모", key="rec_memo")
+
+    if st.button("진료 기록 저장", type="primary", key="add_record"):
+        add_record(rec_pet_id, visit_date, hospital, visit_type, 0, cost, diagnosis, prescription, memo)
+        st.rerun()
+
+    st.subheader("📋 진료 이력")
+    records = get_records()
+    if records:
+        df = pd.DataFrame(records)
+        st.download_button("📥 CSV 내보내기", df.to_csv(index=False), "records.csv", "text/csv", key="btn_download_csv")
+        for r in records:
+            with st.expander(f"{r['visit_date']} · {r['pet_name'] or '미지정'} · {r['visit_type']}"):
+                st.write(f"🏥 병원: {r['hospital']} / 🩺 진단: {r['diagnosis']}")
+                if st.button("삭제", key=f"del_{r['id']}"):
+                    delete_record(r['id']); st.rerun()
+
+# ════════════════════════════════════════════════════════════════════
+# 탭 3. 투약 관리 (아이폰 스타일 동적 UI + 알림 오류 완벽 수정)
+# ════════════════════════════════════════════════════════════════════
+with tab_medication:
+    st.subheader("💊 맞춤형 투약 관리")
+    
+    med_name = st.text_input("약 이름", key="input_med_name")
+    cycle = st.selectbox("반복 주기", ["매일", "매주", "매월", "매년"], key="input_cycle")
+    
+    # 주기에 맞게 필드가 동적으로 나타나도록 설계 (서로 간섭 및 잔상 제거)
+    sub_option = None
+    if cycle == "매주":
+        sub_option = st.multiselect("요일 선택 (중복 가능)", ["월", "화", "수", "목", "금", "토", "일"], key="input_opt_week")
+    elif cycle == "매월":
+        sub_option = st.number_input("매월 며칠에 복용하나요? (1-31일)", min_value=1, max_value=31, value=1, key="input_opt_month")
+    elif cycle == "매년":
+        c1, c2 = st.columns(2)
+        month_opt = c1.selectbox("몇 월", list(range(1, 13)), index=0, key="input_opt_year_m")
+        day_opt = c2.selectbox("몇 일", list(range(1, 32)), index=0, key="input_opt_year_d")
+        sub_option = {"month": month_opt, "day": day_opt}
+        
+    end_date = st.date_input("반복 종료일", key="input_end_date")
+    
+    if st.button("추가하기", type="primary", key="btn_add_med"):
+        if med_name:
+            if "med_list" not in st.session_state: 
+                st.session_state.med_list = []
+            st.session_state.med_list.append({
+                "name": med_name, "cycle": cycle, "opt": sub_option, "end": end_date, "start": date.today()
+            })
+            st.rerun()
+
+    st.markdown("### ✅ 오늘 먹어야 할 약")
+    
+    # 중복 토스트 알림 방지를 위한 상태 저장고 세팅
+    if "checked_state" not in st.session_state:
+        st.session_state.checked_state = {}
+    if "last_date" not in st.session_state or st.session_state.last_date != today:
+        st.session_state.checked_state = {}
+        st.session_state.last_date = today
+
+    if "med_list" in st.session_state and st.session_state.med_list:
+        for idx, med in enumerate(st.session_state.med_list):
+            if med["end"] >= today:
+                opt = med.get("opt")
+                should_take = False
+                
+                # 오늘 먹어야 하는 주기 검증 조건문
+                if med["cycle"] == "매일": 
+                    should_take = True
+                elif med["cycle"] == "매주" and opt:
+                    curr_day = ["월","화","수","목","금","토","일"][today.weekday()]
+                    should_take = curr_day in opt
+                elif med["cycle"] == "매월" and opt: 
+                    should_take = (today.day == opt)
+                elif med["cycle"] == "매년" and opt: 
+                    if isinstance(opt, dict):
+                        should_take = (today.month == opt.get("month") and today.day == opt.get("day"))
+                
+                # 조건에 해당할 때만 체크박스 표출 및 상태 변화 시에만 알림 작동
+                if should_take:
+                    key = f"check_{idx}"
+                    was_checked = st.session_state.checked_state.get(key, False)
+                    is_checked = st.checkbox(f"{med['name']} ({med['cycle']})", key=key)
+                    
+                    if is_checked and not was_checked:
+                        st.toast(f"{med['name']} 복용 완료! 잘하셨어요 🐾", icon="✅")
+                    st.session_state.checked_state[key] = is_checked
+        
+        st.write("---")
+        for idx, med in enumerate(st.session_state.med_list):
+            if st.button(f"삭제: {med['name']}", key=f"del_{idx}"):
+                st.session_state.med_list.pop(idx)
+                st.rerun()
+    else:
+        st.caption("등록된 약이 없습니다.")
