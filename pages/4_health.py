@@ -56,16 +56,32 @@ with tab_schedule:
                 st.rerun()
 
 # ════════════════════════════════════════════════════════════════════
-# 탭 2. 진료 기록
+# 탭 2. 진료 기록 (기존 코드 완벽 복구)
 # ════════════════════════════════════════════════════════════════════
 with tab_record:
-    st.subheader("🏥 진료 기록")
-    # ... (기존 진료 기록 코드들 유지) ...
+    st.subheader("🏥 진료 기록 추가")
+    col1, col2 = st.columns(2)
+    with col1:
+        rec_pet_id, _ = pet_picker("대상 반려동물", "rec_pet")
+        visit_date = st.date_input("진료일", value=date.today())
+        hospital = st.text_input("병원 이름")
+    with col2:
+        visit_type = st.selectbox("진료 유형", ["일반 진료", "예방접종", "정기검진", "수술", "응급", "치과", "기타"])
+        cost = st.number_input("진료비 (원)", min_value=0, step=1000)
+
+    diagnosis = st.text_input("진단 / 증상")
+    prescription = st.text_area("처방 / 약")
+    memo = st.text_area("메모")
+
+    if st.button("진료 기록 저장", type="primary", key="add_record"):
+        add_record(rec_pet_id, visit_date, hospital, visit_type, 0, cost, diagnosis, prescription, memo)
+        st.rerun()
+
+    st.subheader("📋 진료 이력")
     records = get_records()
     if records:
-        # [과제 제출용 추가] CSV 내보내기 기능
         df = pd.DataFrame(records)
-        st.download_button("📥 진료 기록 CSV 다운로드", df.to_csv(index=False), "records.csv", "text/csv")
+        st.download_button("📥 CSV 내보내기", df.to_csv(index=False), "records.csv", "text/csv")
         for r in records:
             with st.expander(f"{r['visit_date']} · {r['pet_name']} · {r['visit_type']}"):
                 st.write(f"병원: {r['hospital']} / 진단: {r['diagnosis']}")
