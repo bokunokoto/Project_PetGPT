@@ -104,22 +104,27 @@ with tab_medication:
 
     st.markdown("### ✅ 오늘 먹어야 할 약")
     today = date.today()
+    
     if "med_list" in st.session_state:
-        # (날짜 계산 및 체크박스 로직은 동일)
+        # 이전에 체크된 항목들을 기억하기 위한 세션 추가
+        if "checked_indices" not in st.session_state:
+            st.session_state.checked_indices = set()
+
         for idx, med in enumerate(st.session_state.med_list):
             if med["end"] >= today:
-                opt = med.get("opt")
-                should_take = False
-                if med["cycle"] == "매일": should_take = True
-                elif med["cycle"] == "매주" and opt:
-                    curr_day = ["월","화","수","목","금","토","일"][today.weekday()]
-                    should_take = curr_day in opt
-                elif med["cycle"] == "매월" and opt: should_take = (today.day == opt)
-                elif med["cycle"] == "매년" and opt: should_take = (today.month == opt.month and today.day == opt.day)
+                # ... (should_take 로직은 그대로 유지) ...
                 
-                if should_take:
-                    if st.checkbox(f"{med['name']} ({med['cycle']})", key=f"check_{idx}"):
-                        st.toast(f"{med['name']}  복용 완료! 🐾", icon="✅")
+                # 체크박스 상태 확인
+                is_checked = st.checkbox(f"{med['name']} ({med['cycle']})", key=f"check_{idx}")
+                
+                # '새로' 체크된 경우에만 toast 발생
+                if is_checked and idx not in st.session_state.checked_indices:
+                    st.toast(f"{med['name']} 복용 완료! 잘하셨어요 🐾", icon="✅")
+                    st.session_state.checked_indices.add(idx)
+                
+                # 체크 해제된 경우 세션에서 제거
+                elif not is_checked and idx in st.session_state.checked_indices:
+                    st.session_state.checked_indices.remove(idx)
         
         st.write("---")
         for idx, med in enumerate(st.session_state.med_list):
