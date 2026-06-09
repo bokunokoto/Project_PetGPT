@@ -75,22 +75,29 @@ with tab_record:
                 if st.button("삭제", key=f"del_{r['id']}"): delete_record(r['id']); st.rerun()
 
 # ════════════════════════════════════════════════════════════════════
-# 탭 3. 투약 관리 (아이폰 스타일 상세 설정)
+# 탭 3. 투약 관리 (요일 선택 잔상 문제 해결 버전)
 # ════════════════════════════════════════════════════════════════════
 with tab_medication:
     st.subheader("💊 맞춤형 투약 관리")
-    with st.form("med_form", clear_on_submit=True):
-        med_name = st.text_input("약 이름")
-        cycle = st.selectbox("반복 주기", ["매일", "매주", "매월", "매년"])
-        
-        # 주기에 따른 동적 UI
-        sub_opt = None
-        if cycle == "매주": sub_opt = st.multiselect("요일 선택", ["월", "화", "수", "목", "금", "토", "일"])
-        elif cycle == "매월": sub_opt = st.number_input("매월 며칠에 복용?", 1, 31, 1)
-        elif cycle == "매년": sub_opt = st.date_input("매년 언제 복용?")
+    
+    # 1. 폼 밖에서 주기를 먼저 선택 (이래야 UI가 즉시 갱신됨)
+    med_name = st.text_input("약 이름")
+    cycle = st.selectbox("반복 주기", ["매일", "매주", "매월", "매년"])
+    
+    # 2. 선택값에 따라 동적으로 입력 필드 분기
+    sub_opt = None
+    if cycle == "매주":
+        sub_opt = st.multiselect("요일 선택", ["월", "화", "수", "목", "금", "토", "일"])
+    elif cycle == "매월":
+        sub_opt = st.number_input("매월 며칠에 복용?", 1, 31, 1)
+    elif cycle == "매년":
+        sub_opt = st.date_input("매년 언제 복용?")
             
-        end_date = st.date_input("반복 종료일")
-        if st.form_submit_button("추가하기"):
+    end_date = st.date_input("반복 종료일")
+    
+    # 3. 마지막에 버튼을 눌러 저장
+    if st.button("추가하기"):
+        if med_name:
             if "med_list" not in st.session_state: st.session_state.med_list = []
             st.session_state.med_list.append({"name": med_name, "cycle": cycle, "opt": sub_opt, "end": end_date})
             st.rerun()
@@ -98,18 +105,23 @@ with tab_medication:
     st.markdown("### ✅ 오늘 먹어야 할 약")
     today = date.today()
     if "med_list" in st.session_state:
+        # (날짜 계산 및 체크박스 로직은 동일)
         for idx, med in enumerate(st.session_state.med_list):
             if med["end"] >= today:
-                should_take = False
                 opt = med.get("opt")
+                should_take = False
                 if med["cycle"] == "매일": should_take = True
-                elif med["cycle"] == "매주" and opt: should_take = ["월","화","수","목","금","토","일"][today.weekday()] in opt
+                elif med["cycle"] == "매주" and opt:
+                    curr_day = ["월","화","수","목","금","토","일"][today.weekday()]
+                    should_take = curr_day in opt
                 elif med["cycle"] == "매월" and opt: should_take = (today.day == opt)
                 elif med["cycle"] == "매년" and opt: should_take = (today.month == opt.month and today.day == opt.day)
                 
                 if should_take:
                     if st.checkbox(f"{med['name']} ({med['cycle']})", key=f"check_{idx}"):
                         st.toast(f"{med['name']} 복용 완료! 잘하셨어요 🐾", icon="✅")
+        
         st.write("---")
         for idx, med in enumerate(st.session_state.med_list):
-            if st.button(f"삭제: {med['name']}", key=f"del_{idx}"): st.session_state.med_list.pop(idx); st.rerun()
+            if st.button(f"삭제: {med['name']}", key=f"del_{idx}"):
+                st.session_state.med_list.pop(idx); st.rerun()
