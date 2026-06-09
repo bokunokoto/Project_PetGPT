@@ -10,8 +10,7 @@ import auth
 from db import (get_pets, get_schedules, add_schedule, complete_schedule,
                 get_records, add_record, delete_record)
 
-# 만약 db 모듈에 일정 자체를 완전히 삭제하는 기능이 없다면, 
-# 완료된 일정을 화면에서 안 보이게 필터링하기 위해 세션 유기적 관리 기능을 추가했습니다.
+# 완료된 일정을 세션 상태에서 관리하여 즉시 삭제 필터링 처리
 if "completed_schedule_ids" not in st.session_state:
     st.session_state.completed_schedule_ids = set()
 
@@ -34,7 +33,7 @@ def pet_picker(label, key, allow_text=True):
     return None, name or "미지정"
 
 # ════════════════════════════════════════════════════════════════════
-# 탭 1. 케어 일정 (완료 시 즉시 삭제 및 달력 연동 반영)
+# 탭 1. 케어 일정 (완료 버튼 클릭 시 실시간 증발)
 # ════════════════════════════════════════════════════════════════════
 with tab_schedule:
     st.subheader("➕ 일정 추가")
@@ -57,21 +56,21 @@ with tab_schedule:
     today = date.today()
     st.subheader(f"🗓️ {today.year}년 {today.month}월 케어 캘린더")
     
-    # DB에서 전체 일정을 가져온 뒤, 완료(삭제) 버튼을 누른 일정은 필터링해서 제외
+    # 완료 처리된 일정을 제외하고 남은 일정만 로드
     raw_schedules = get_schedules()
     schedules = [s for s in raw_schedules if s["id"] not in st.session_state.completed_schedule_ids]
     
-    # 현재 월의 일자 배열 가져오기 (일요일 시작: firstweekday=6)
+    # 달력 배열 생성 (일요일 시작을 위해 firstweekday=6 설정)
     cal = calendar.Calendar(firstweekday=6)
     month_days = cal.monthdayscalendar(today.year, today.month)
     
-    # 요일 헤더 표시
+    # 요일 헤더 매핑
     week_headers = ["일", "월", "화", "수", "목", "금", "토"]
     cols_header = st.columns(7)
     for idx, h in enumerate(week_headers):
         cols_header[idx].markdown(f"<p style='text-align:center; font-weight:bold; margin-bottom:5px;'>{h}</p>", unsafe_allow_html=True)
         
-    # 날짜별 일정 매핑
+    # 날짜별 일정 맵 구성
     schedule_map = {}
     for s in schedules:
         try:
@@ -83,14 +82,145 @@ with tab_schedule:
         except:
             pass
 
-    # 바둑판 격자 렌더링
+    # 바둑판 격자 화면 출력
     for week in month_days:
         cols = st.columns(7)
         for i, day in enumerate(week):
             if day == 0:
-                cols[i].write("")  # 이번 달이 아닌 공백 칸
+                cols[i].write("")  # 공백 칸
             else:
-                # 오늘 날짜는 테두리를 빨간색으로 다르게 강조
+                # 오늘 날짜 상자 테두리 강조 스타일 변경
                 box_style = "border:1px solid #ccc; border-radius:5px; padding:5px; min-height:85px; width:100%;"
                 if day == today.day:
-                    box_style = "border:2px solid #ff4b4b; border-radius:5px; padding:5px; min-height:85px; background
+                    box_style = "border:2px solid #ff4b4b; border-radius:5px; padding:5px; min-height:85px; background-color:#fff5f5; width:100%;"
+                
+                cell_html = f"<div style='{box_style}'><strong>{day}</strong>"
+                if day in schedule_map:
+                    for item in schedule_map[day]:
+                        cell_html += f"<div style='font-size:11px; color:#333; background-color:#e1f5fe; border-radius:3px; padding:2px; margin-top:3px; word-break:break-all;'>{item}</div>"
+                cell_html += "</div>"
+                cols[i].markdown(cell_html, unsafe_allow_html=True)
+
+    st.write("")
+    st.subheader("🔔 다가오는 일정 목록")
+    if not schedules:
+        st.caption("남은 일정이 없습니다.")
+    else:
+        for s in schedules:
+            with st.container(border=True):
+                st.write(f"**{s['pet_name'] or '미지정'}** · {s['care_type']} (예정일: {s['next_due']})")
+                if st.button("완료", key=f"done_{s['id']}"):
+                    # 클릭 즉시 완료 세션에 넣어 화면에서 완벽 은폐 및 디비 함수 호출
+                    st.session_state.completed_schedule_ids.add(s["id"])
+                    complete_schedule(s["id"], date.today(), s["cycle_days"])
+                    st.toast(f"'{s['care_type']}' 일정을 완료하여 목록에서 삭제했습니다! ✨")
+                    st.rerun()
+
+# ════════════════════════════════════════════════════════════════════
+# 탭 2. 진료 기록
+# ════════════════════════════════════════════════════════════════════
+with tab_record:
+    st.subheader("🏥 진료 기록 추가")
+    col1, col2 = st.columns(2)
+    with col1:
+        rec_pet_id, _ = pet_picker("대상 반려동물", "rec_pet")
+        visit_date = st.date_input("진료일", value=date.today(), key="rec_visit_date")
+        hospital = st.text_input("병원 이름", key="rec_hospital")
+    with col2:
+        visit_type = st.selectbox("진료 유형", ["일반 진료", "예방접종", "정기검진", "수술", "응급", "치과", "기타"], key="rec_visit_type")
+        cost = st.number_input("진료비 (원)", min_value=0, step=1000, key="rec_cost")
+
+    diagnosis = st.text_input("진단 / 증상", key="rec_diagnosis")
+    prescription = st.text_area("처방 / 약", key="rec_prescription")
+    memo = st.text_area("메모", key="rec_memo")
+
+    if st.button("진료 기록 저장", type="primary", key="add_record"):
+        add_record(rec_pet_id, visit_date, hospital, visit_type, 0, cost, diagnosis, prescription, memo)
+        st.rerun()
+
+    st.subheader("📋 진료 이력")
+    records = get_records()
+    if records:
+        df = pd.DataFrame(records)
+        st.download_button("📥 CSV 내보내기", df.to_csv(index=False), "records.csv", "text/csv", key="btn_download_csv")
+        for r in records:
+            with st.expander(f"{r['visit_date']} · {r['pet_name'] or '미지정'} · {r['visit_type']}"):
+                st.write(f"🏥 병원: {r['hospital']} / 🩺 진단: {r['diagnosis']}")
+                if st.button("삭제", key=f"del_{r['id']}"):
+                    delete_record(r['id']); st.rerun()
+
+# ════════════════════════════════════════════════════════════════════
+# 탭 3. 투약 관리 (문법 에러 100% 완전 해결 완료)
+# ════════════════════════════════════════════════════════════════════
+with tab_medication:
+    st.subheader("💊 맞춤형 투약 관리")
+    
+    med_name = st.text_input("약 이름", key="input_med_name")
+    cycle = st.selectbox("반복 주기", ["매일", "매주", "매월", "매년"], key="input_cycle")
+    
+    # 주기에 알맞은 매칭 UI 전면 노출 및 잔상 완전 차단
+    sub_option = None
+    if cycle == "매주":
+        sub_option = st.multiselect("요일 선택 (중복 가능)", ["월", "화", "수", "목", "금", "토", "일"], key="input_opt_week")
+    elif cycle == "매월":
+        sub_option = st.number_input("매월 며칠에 복용하나요? (1-31일)", min_value=1, max_value=31, value=1, key="input_opt_month")
+    elif cycle == "매년":
+        c1, c2 = st.columns(2)
+        month_opt = c1.selectbox("몇 월", list(range(1, 13)), index=0, key="input_opt_year_m")
+        day_opt = c2.selectbox("몇 일", list(range(1, 32)), index=0, key="input_opt_year_d")
+        sub_option = {"month": month_opt, "day": day_opt}
+        
+    end_date = st.date_input("반복 종료일", key="input_end_date")
+    
+    if st.button("추가하기", type="primary", key="btn_add_med"):
+        if med_name:
+            if "med_list" not in st.session_state: 
+                st.session_state.med_list = []
+            st.session_state.med_list.append({
+                "name": med_name, "cycle": cycle, "opt": sub_option, "end": end_date, "start": date.today()
+            })
+            st.rerun()
+
+    st.markdown("### ✅ 오늘 먹어야 할 약")
+    
+    # 중복 토스트 호출 제한 상태 초기화
+    if "checked_state" not in st.session_state:
+        st.session_state.checked_state = {}
+    if "last_date" not in st.session_state or st.session_state.last_date != today:
+        st.session_state.checked_state = {}
+        st.session_state.last_date = today
+
+    if "med_list" in st.session_state and st.session_state.med_list:
+        for idx, med in enumerate(st.session_state.med_list):
+            if med["end"] >= today:
+                opt = med.get("opt")
+                should_take = False
+                
+                # 오늘 먹어야 할 약 계산 검증식
+                if med["cycle"] == "매일": 
+                    should_take = True
+                elif med["cycle"] == "매주" and opt:
+                    curr_day = ["월","화","수","목","금","토","일"][today.weekday()]
+                    should_take = curr_day in opt
+                elif med["cycle"] == "매월" and opt: 
+                    should_take = (today.day == opt)
+                elif med["cycle"] == "매년" and opt: 
+                    if isinstance(opt, dict):
+                        should_take = (today.month == opt.get("month") and today.day == opt.get("day"))
+                
+                if should_take:
+                    key = f"check_{idx}"
+                    was_checked = st.session_state.checked_state.get(key, False)
+                    is_checked = st.checkbox(f"{med['name']} ({med['cycle']})", key=key)
+                    
+                    if is_checked and not was_checked:
+                        st.toast(f"{med['name']} 복용 완료! 잘하셨어요 🐾", icon="✅")
+                    st.session_state.checked_state[key] = is_checked
+        
+        st.write("---")
+        for idx, med in enumerate(st.session_state.med_list):
+            if st.button(f"삭제: {med['name']}", key=f"del_{idx}"):
+                st.session_state.med_list.pop(idx)
+                st.rerun()
+    else:
+        st.caption("등록된 약이 없습니다.")
