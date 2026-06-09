@@ -37,7 +37,7 @@ def pet_picker(label, key, allow_text=True):
     return None, name or "미지정"
 
 # ════════════════════════════════════════════════════════════════════
-# 탭 1. 케어 일정 (아이폰 캘린더 UX 반영 버전)
+# 탭 1. 케어 일정 (플랫 세련된 격자형 클릭 캘린더 구현)
 # ════════════════════════════════════════════════════════════════════
 with tab_schedule:
     st.subheader("➕ 일정 추가")
@@ -56,7 +56,7 @@ with tab_schedule:
 
     st.divider()
     
-    # 🗓️ 진짜 아이폰 스타일 바둑판 달력 뷰 제작
+    # 🗓️ 플랫 스타일 바둑판 달력 뷰 제작
     today = date.today()
     st.subheader(f"🗓️ {today.year}년 {today.month}월 케어 캘린더")
     
@@ -68,14 +68,14 @@ with tab_schedule:
     cal = calendar.Calendar(firstweekday=6)
     month_days = cal.monthdayscalendar(today.year, today.month)
     
-    # 요일 헤더 표시
+    # 요일 헤더 표시 (세련된 차콜 앤 그레이 스타일)
     week_headers = ["일", "월", "화", "수", "목", "금", "토"]
     cols_header = st.columns(7)
     for idx, h in enumerate(week_headers):
-        color_style = "color:#666;"
-        if h == "일": color_style = "color:#ff4b4b;"
-        elif h == "토": color_style = "color:#4b86ff;"
-        cols_header[idx].markdown(f"<p style='text-align:center; font-weight:bold; margin-bottom:5px; {color_style}'>{h}</p>", unsafe_allow_html=True)
+        color_style = "color:#555555;"
+        if h == "일": color_style = "color:#e03e2d;"
+        elif h == "토": color_style = "color:#2b6cb0;"
+        cols_header[idx].markdown(f"<p style='text-align:center; font-weight:700; margin-bottom:8px; font-size:14px; {color_style}'>{h}</p>", unsafe_allow_html=True)
         
     # 날짜별 일정 매핑 (달력용 간단 뷰)
     schedule_map = {}
@@ -89,54 +89,55 @@ with tab_schedule:
         except:
             pass
 
-    # 바둑판 격자 화면 출력 (라디오 버튼 스타일의 날짜 토글 구현)
+    # 바둑판 격자 화면 출력 (선택 버튼 삭제 및 클릭 연동용 컴포넌트 전면 개조)
     for week in month_days:
         cols = st.columns(7)
         for i, day in enumerate(week):
             if day == 0:
                 cols[i].write("")  # 공백 칸
             else:
-                # 색상 디자인 개선 (애플 감성 모던 파스텔 민트 & 라벤더 블루)
                 is_selected = (st.session_state.selected_calendar_day == day)
                 
-                # 기본 상자 스타일
-                box_style = "border:1px solid #e6e6e6; border-radius:8px; padding:4px; min-height:80px; width:100%; background-color:#fafafa; transition: 0.2s;"
+                # 완전히 각지고 깔끔한 모던 실버 플랫 테두리 및 단색 매칭
+                box_style = "border:1px solid #e1e1e1; padding:6px; min-height:85px; background-color:#ffffff;"
                 
                 if day == today.day:
-                    # 오늘 날짜: 세련된 소프트 블루 하이라이트
-                    box_style = "border:2px solid #007aff; border-radius:8px; padding:4px; min-height:80px; background-color:#f0f7ff; width:100%;"
+                    # 오늘 날짜: 애플 인디고 블루 포인트 선형 테두리
+                    box_style = "border:2px solid #007aff; padding:6px; min-height:85px; background-color:#f4f9ff;"
                 elif is_selected:
-                    # 사용자가 클릭해서 선택한 날짜: 딥 챠콜 테두리
-                    box_style = "border:2px solid #333333; border-radius:8px; padding:4px; min-height:80px; background-color:#f5f5f5; width:100%;"
+                    # 선택된 날짜: 선명하고 트렌디한 다크 챠콜 플랫 테두리
+                    box_style = "border:2px solid #222222; padding:6px; min-height:85px; background-color:#f9f9f9;"
                 
-                cell_html = f"<div style='{box_style}'><strong>{day}</strong>"
+                cell_html = f"<div style='{box_style}'><span style='font-size:13px; font-weight:600; color:#333;'>{day}</span>"
                 if day in schedule_map:
                     for s in schedule_map[day]:
-                        # 달력 격자 안에는 간단히 일정이름만 노출!
-                        cell_html += f"<div style='font-size:10px; color:#0056b3; background-color:#e1f0ff; border-radius:4px; padding:1px 3px; margin-top:3px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;'>📎 {s['care_type']}</div>"
+                        # 각진 라벨 형태로 달력 내부에 미니멀하게 표출
+                        cell_html += f"<div style='font-size:10px; color:#1a202c; background-color:#edf2f7; border-left:3px solid #4a5568; padding:2px 4px; margin-top:4px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;'>{s['care_type']}</div>"
                 cell_html += "</div>"
+                
+                # 마크다운으로 깔끔한 사각형 모양 상자를 출력
                 cols[i].markdown(cell_html, unsafe_allow_html=True)
                 
-                # 상자 밑에 보이지 않는 선택 버튼 배치 (바둑판 날짜 클릭 시 상태 전환용)
-                if cols[i].button("선택", key=f"select_day_{day}", use_container_width=True):
+                # [선택] 칸 글자는 완전히 없애고 투명하게 블록 전체를 버튼 영역화
+                if cols[i].button(f"📅 {day}일", key=f"click_day_{day}", use_container_width=True):
                     st.session_state.selected_calendar_day = day
                     st.rerun()
 
-    # 📋 달력 하단 상세 보기 섹션
+    # 📋 달력 사각형 클릭 시 하단 상세 정보 활성화 섹션
     sel_day = st.session_state.selected_calendar_day
     st.write("")
-    st.markdown(f"### 🔍 {today.month}월 {sel_day}일 상세 일정")
+    st.markdown(f"#### 🔍 선택한 {sel_day}일의 상세 기록 목록")
     
     day_schedules = schedule_map.get(sel_day, [])
     if not day_schedules:
-        st.caption("선택한 날짜에 예정된 일정이 없습니다. 달력의 다른 날짜를 눌러보세요.")
+        st.caption("해당 날짜에 잡혀있는 일정이 없습니다. 달력의 일정을 누르면 상세 조회가 가능합니다.")
     else:
         for s in day_schedules:
             with st.container(border=True):
                 c1, c2 = st.columns([4, 1])
-                c1.write(f"🐾 **{s['pet_name'] or '미지정'}**의 일과 : `{s['care_type']}`")
-                c1.caption(f"최근 시행일: {s['last_done']} | 주기: {s['cycle_days']}일 마다 반복")
-                if c2.button("완료", key=f"done_day_{s['id']}", type="primary"):
+                c1.write(f"🐾 **{s['pet_name'] or '아이'}** : `{s['care_type']}`")
+                c1.caption(f"최근 시행일: {s['last_done']} | 반복 주기: {s['cycle_days']}일")
+                if c2.button("완료", key=f"done_day_{s['id']}", type="primary", use_container_width=True):
                     st.session_state.completed_schedule_ids.add(s["id"])
                     complete_schedule(s["id"], date.today(), s["cycle_days"])
                     st.toast(f"'{s['care_type']}' 일정을 완료하여 삭제했습니다! ✨", icon="✅")
