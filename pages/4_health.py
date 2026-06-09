@@ -56,7 +56,7 @@ with tab_schedule:
                 st.rerun()
 
 # ════════════════════════════════════════════════════════════════════
-# 탭 2. 진료 기록 (기존 코드 완벽 복구)
+# 탭 2. 진료 기록
 # ════════════════════════════════════════════════════════════════════
 with tab_record:
     st.subheader("🏥 진료 기록 추가")
@@ -89,7 +89,7 @@ with tab_record:
                     delete_record(r['id']); st.rerun()
 
 # ════════════════════════════════════════════════════════════════════
-# 탭 3. 투약 관리 (아이폰 스타일)
+# 탭 3. 투약 관리 (아이폰 스타일 & Toast 알림)
 # ════════════════════════════════════════════════════════════════════
 with tab_medication:
     st.subheader("💊 맞춤형 투약 관리")
@@ -115,10 +115,14 @@ with tab_medication:
             if med["end"] >= today:
                 diff = (today - med["start"]).days
                 should_take = (med["cycle"]=="매일") or (med["cycle"]=="매주" and diff%7==0) or (med["cycle"]=="2주마다" and diff%14==0)
+                
                 if should_take:
                     if st.checkbox(f"{med['name']} ({med['cycle']})", key=f"check_{idx}"):
-                        st.balloons()
+                        st.toast(f"{med['name']} 복용 완료! 잘하셨어요 🐾", icon="✅")
+        
         st.write("---")
         for idx, med in enumerate(st.session_state.med_list):
             if st.button(f"삭제: {med['name']}", key=f"del_{idx}"):
                 st.session_state.med_list.pop(idx); st.rerun()
+    else:
+        st.caption("등록된 약이 없습니다.")
