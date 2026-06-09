@@ -14,6 +14,10 @@ from db import (get_pets, get_schedules, add_schedule, complete_schedule,
 if "completed_schedule_ids" not in st.session_state:
     st.session_state.completed_schedule_ids = set()
 
+# 아이폰 스타일 날짜 선택 저장을 위한 세션 상태 초기화 (기본값: 오늘)
+if "selected_calendar_day" not in st.session_state:
+    st.session_state.selected_calendar_day = date.today().day
+
 auth.login_widget()
 
 st.title("📒 건강 수첩")
@@ -33,7 +37,7 @@ def pet_picker(label, key, allow_text=True):
     return None, name or "미지정"
 
 # ════════════════════════════════════════════════════════════════════
-# 탭 1. 케어 일정 (완료 버튼 클릭 시 실시간 증발)
+# 탭 1. 케어 일정 (아이폰 캘린더 UX 반영 버전)
 # ════════════════════════════════════════════════════════════════════
 with tab_schedule:
     st.subheader("➕ 일정 추가")
@@ -60,17 +64,20 @@ with tab_schedule:
     raw_schedules = get_schedules()
     schedules = [s for s in raw_schedules if s["id"] not in st.session_state.completed_schedule_ids]
     
-    # 달력 배열 생성 (일요일 시작을 위해 firstweekday=6 설정)
+    # 달력 배열 생성 (일요일 시작: firstweekday=6)
     cal = calendar.Calendar(firstweekday=6)
     month_days = cal.monthdayscalendar(today.year, today.month)
     
-    # 요일 헤더 매핑
+    # 요일 헤더 표시
     week_headers = ["일", "월", "화", "수", "목", "금", "토"]
     cols_header = st.columns(7)
     for idx, h in enumerate(week_headers):
-        cols_header[idx].markdown(f"<p style='text-align:center; font-weight:bold; margin-bottom:5px;'>{h}</p>", unsafe_allow_html=True)
+        color_style = "color:#666;"
+        if h == "일": color_style = "color:#ff4b4b;"
+        elif h == "토": color_style = "color:#4b86ff;"
+        cols_header[idx].markdown(f"<p style='text-align:center; font-weight:bold; margin-bottom:5px; {color_style}'>{h}</p>", unsafe_allow_html=True)
         
-    # 날짜별 일정 맵 구성
+    # 날짜별 일정 매핑 (달력용 간단 뷰)
     schedule_map = {}
     for s in schedules:
         try:
@@ -78,42 +85,61 @@ with tab_schedule:
             if s_date.year == today.year and s_date.month == today.month:
                 if s_date.day not in schedule_map:
                     schedule_map[s_date.day] = []
-                schedule_map[s_date.day].append(f"📌 {s['pet_name'] or '아이'}: {s['care_type']}")
+                schedule_map[s_date.day].append(s)
         except:
             pass
 
-    # 바둑판 격자 화면 출력
+    # 바둑판 격자 화면 출력 (라디오 버튼 스타일의 날짜 토글 구현)
     for week in month_days:
         cols = st.columns(7)
         for i, day in enumerate(week):
             if day == 0:
                 cols[i].write("")  # 공백 칸
             else:
-                # 오늘 날짜 상자 테두리 강조 스타일 변경
-                box_style = "border:1px solid #ccc; border-radius:5px; padding:5px; min-height:85px; width:100%;"
+                # 색상 디자인 개선 (애플 감성 모던 파스텔 민트 & 라벤더 블루)
+                is_selected = (st.session_state.selected_calendar_day == day)
+                
+                # 기본 상자 스타일
+                box_style = "border:1px solid #e6e6e6; border-radius:8px; padding:4px; min-height:80px; width:100%; background-color:#fafafa; transition: 0.2s;"
+                
                 if day == today.day:
-                    box_style = "border:2px solid #ff4b4b; border-radius:5px; padding:5px; min-height:85px; background-color:#fff5f5; width:100%;"
+                    # 오늘 날짜: 세련된 소프트 블루 하이라이트
+                    box_style = "border:2px solid #007aff; border-radius:8px; padding:4px; min-height:80px; background-color:#f0f7ff; width:100%;"
+                elif is_selected:
+                    # 사용자가 클릭해서 선택한 날짜: 딥 챠콜 테두리
+                    box_style = "border:2px solid #333333; border-radius:8px; padding:4px; min-height:80px; background-color:#f5f5f5; width:100%;"
                 
                 cell_html = f"<div style='{box_style}'><strong>{day}</strong>"
                 if day in schedule_map:
-                    for item in schedule_map[day]:
-                        cell_html += f"<div style='font-size:11px; color:#333; background-color:#e1f5fe; border-radius:3px; padding:2px; margin-top:3px; word-break:break-all;'>{item}</div>"
+                    for s in schedule_map[day]:
+                        # 달력 격자 안에는 간단히 일정이름만 노출!
+                        cell_html += f"<div style='font-size:10px; color:#0056b3; background-color:#e1f0ff; border-radius:4px; padding:1px 3px; margin-top:3px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;'>📎 {s['care_type']}</div>"
                 cell_html += "</div>"
                 cols[i].markdown(cell_html, unsafe_allow_html=True)
+                
+                # 상자 밑에 보이지 않는 선택 버튼 배치 (바둑판 날짜 클릭 시 상태 전환용)
+                if cols[i].button("선택", key=f"select_day_{day}", use_container_width=True):
+                    st.session_state.selected_calendar_day = day
+                    st.rerun()
 
+    # 📋 달력 하단 상세 보기 섹션
+    sel_day = st.session_state.selected_calendar_day
     st.write("")
-    st.subheader("🔔 다가오는 일정 목록")
-    if not schedules:
-        st.caption("남은 일정이 없습니다.")
+    st.markdown(f"### 🔍 {today.month}월 {sel_day}일 상세 일정")
+    
+    day_schedules = schedule_map.get(sel_day, [])
+    if not day_schedules:
+        st.caption("선택한 날짜에 예정된 일정이 없습니다. 달력의 다른 날짜를 눌러보세요.")
     else:
-        for s in schedules:
+        for s in day_schedules:
             with st.container(border=True):
-                st.write(f"**{s['pet_name'] or '미지정'}** · {s['care_type']} (예정일: {s['next_due']})")
-                if st.button("완료", key=f"done_{s['id']}"):
-                    # 클릭 즉시 완료 세션에 넣어 화면에서 완벽 은폐 및 디비 함수 호출
+                c1, c2 = st.columns([4, 1])
+                c1.write(f"🐾 **{s['pet_name'] or '미지정'}**의 일과 : `{s['care_type']}`")
+                c1.caption(f"최근 시행일: {s['last_done']} | 주기: {s['cycle_days']}일 마다 반복")
+                if c2.button("완료", key=f"done_day_{s['id']}", type="primary"):
                     st.session_state.completed_schedule_ids.add(s["id"])
                     complete_schedule(s["id"], date.today(), s["cycle_days"])
-                    st.toast(f"'{s['care_type']}' 일정을 완료하여 목록에서 삭제했습니다! ✨")
+                    st.toast(f"'{s['care_type']}' 일정을 완료하여 삭제했습니다! ✨", icon="✅")
                     st.rerun()
 
 # ════════════════════════════════════════════════════════════════════
@@ -150,7 +176,7 @@ with tab_record:
                     delete_record(r['id']); st.rerun()
 
 # ════════════════════════════════════════════════════════════════════
-# 탭 3. 투약 관리 (문법 에러 100% 완전 해결 완료)
+# 탭 3. 투약 관리
 # ════════════════════════════════════════════════════════════════════
 with tab_medication:
     st.subheader("💊 맞춤형 투약 관리")
@@ -158,7 +184,6 @@ with tab_medication:
     med_name = st.text_input("약 이름", key="input_med_name")
     cycle = st.selectbox("반복 주기", ["매일", "매주", "매월", "매년"], key="input_cycle")
     
-    # 주기에 알맞은 매칭 UI 전면 노출 및 잔상 완전 차단
     sub_option = None
     if cycle == "매주":
         sub_option = st.multiselect("요일 선택 (중복 가능)", ["월", "화", "수", "목", "금", "토", "일"], key="input_opt_week")
@@ -183,7 +208,6 @@ with tab_medication:
 
     st.markdown("### ✅ 오늘 먹어야 할 약")
     
-    # 중복 토스트 호출 제한 상태 초기화
     if "checked_state" not in st.session_state:
         st.session_state.checked_state = {}
     if "last_date" not in st.session_state or st.session_state.last_date != today:
@@ -196,7 +220,6 @@ with tab_medication:
                 opt = med.get("opt")
                 should_take = False
                 
-                # 오늘 먹어야 할 약 계산 검증식
                 if med["cycle"] == "매일": 
                     should_take = True
                 elif med["cycle"] == "매주" and opt:
