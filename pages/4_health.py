@@ -37,7 +37,7 @@ def pet_picker(label, key, allow_text=True):
     return None, name or "미지정"
 
 # ════════════════════════════════════════════════════════════════════
-# 탭 1. 케어 일정 (시퍼런 띠 완전 박멸 및 왼쪽 위 정렬 캘린더)
+# 탭 1. 케어 일정
 # ════════════════════════════════════════════════════════════════════
 with tab_schedule:
     st.subheader("➕ 일정 추가")
@@ -59,7 +59,7 @@ with tab_schedule:
     today = date.today()
     st.subheader(f"🗓️ {today.year}년 {today.month}월 케어 달력")
 
-    # 🔥 [핵심] 시퍼런 버그 원천 차단 및 숫자 왼쪽 위 고정을 위한 안전한 CSS
+    # 🔥 다크모드/라이트모드 모두 호환되는 완벽한 커스텀 CSS (텍스트 색상 강제 간섭 제거)
     st.markdown("""
         <style>
         /* 달력 블록(Secondary 버튼)을 100px 크기의 네모 상자로 강제 고정하고 무조건 왼쪽 위 정렬 */
@@ -68,11 +68,9 @@ with tab_schedule:
             height: 100px !important;
             padding: 8px !important;
             border-radius: 6px !important;
-            border: 1px solid #d1d5db !important;
-            background-color: #ffffff !important;
-            color: #1f2937 !important;
+            border: 1px solid rgba(128, 128, 128, 0.3) !important;
+            background-color: transparent !important;
             
-            /* 정렬의 핵심: 내부 요소를 무조건 왼쪽 맨 위로 밀어붙임 */
             display: flex !important;
             flex-direction: column !important;
             align-items: flex-start !important;
@@ -81,13 +79,11 @@ with tab_schedule:
             box-shadow: none !important;
         }
 
-        /* 텍스트 영역 가로폭 100% 확보 */
         div[data-testid="column"] div.stButton > button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]) div[data-testid="stMarkdownContainer"] {
             width: 100% !important;
             text-align: left !important;
         }
         
-        /* 일정 이름이 줄바꿈되어 블록 안에 쏙 들어가도록 처리 */
         div[data-testid="column"] div.stButton > button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]) p {
             margin: 0 !important;
             padding: 0 !important;
@@ -98,17 +94,15 @@ with tab_schedule:
             word-break: break-all !important;
         }
 
-        /* 마우스를 올리거나 클릭해도 파란색이 튀어나오지 않고 깔끔한 회색톤 유지 */
+        /* 호버 및 클릭 시 깔끔한 투명도 기반 회색톤 유지 */
         div[data-testid="column"] div.stButton > button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):hover {
-            border-color: #9ca3af !important;
-            background-color: #f3f4f6 !important;
+            border-color: rgba(128, 128, 128, 0.8) !important;
+            background-color: rgba(128, 128, 128, 0.05) !important;
         }
         
         div[data-testid="column"] div.stButton > button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):focus,
         div[data-testid="column"] div.stButton > button:not([kind="primary"]):not([data-testid="stBaseButton-primary"]):active {
-            border: 2px solid #111827 !important;
-            background-color: #f9fafb !important;
-            color: #111827 !important;
+            border: 2px solid rgba(128, 128, 128, 0.9) !important;
             box-shadow: none !important;
             outline: none !important;
         }
@@ -125,7 +119,7 @@ with tab_schedule:
     week_headers = ["일", "월", "화", "수", "목", "금", "토"]
     cols_header = st.columns(7)
     for idx, h in enumerate(week_headers):
-        color_style = "color:#555555;"
+        color_style = "color:#888888;"
         if h == "일": color_style = "color:#e03e2d;"
         elif h == "토": color_style = "color:#2b6cb0;"
         cols_header[idx].markdown(f"<p style='text-align:center; font-weight:700; margin-bottom:5px; font-size:14px; {color_style}'>{h}</p>", unsafe_allow_html=True)
@@ -150,24 +144,26 @@ with tab_schedule:
             else:
                 is_selected = (st.session_state.selected_calendar_day == day)
                 
-                # 오류의 주범이었던 디자인 코드를 다 빼고 직관적인 텍스트 라벨로 대체
-                today_marker = " (오늘)" if day == today.day else ""
-                sel_marker = " 👈" if is_selected else ""
+                # 🔥 핵심 수정: "(오늘)" 글자를 완전히 지우고, 오늘 날짜 숫자 자체를 파란색으로 처리
+                if day == today.day:
+                    button_content = f":blue[**{day}**]" 
+                else:
+                    button_content = f"**{day}**"
                 
-                # 버튼 내부에 들어갈 텍스트 (숫자가 가장 먼저 오고 그 아래에 일정이 붙음)
-                button_content = f"**{day}**{today_marker}{sel_marker}"
+                if is_selected:
+                    button_content += " 👈"
                 
                 if day in schedule_map:
-                    button_content += "\n" # 한 칸 띄우고
+                    button_content += "\n"
                     for s in schedule_map[day]:
-                        button_content += f"\n▪ {s['care_type']}" # 일정 이름 삽입
+                        button_content += f"\n▪ {s['care_type']}"
                 
                 # 버튼을 생성 (이 블록 자체가 날짜 칸이자 클릭 버튼이 됨)
                 if cols[i].button(button_content, key=f"cal_day_{day}", use_container_width=True):
                     st.session_state.selected_calendar_day = day
                     st.rerun()
 
-    # 📋 바둑판 사각형 네모 블록 클릭 시 하단 상세 정보 활성화 섹션
+    # 📋 달력 클릭 시 하단 상세 정보 활성화 섹션
     sel_day = st.session_state.selected_calendar_day
     st.write("")
     st.markdown(f"#### 🔍 {sel_day}일 상세 일정 기록")
@@ -181,7 +177,6 @@ with tab_schedule:
                 c1, c2 = st.columns([4, 1])
                 c1.write(f"🐾 **{s['pet_name'] or '아이'}** : `{s['care_type']}`")
                 c1.caption(f"최근 시행일: {s['last_done']} | 반복 주기: {s['cycle_days']}일")
-                # 완료 버튼은 Primary 타입을 유지하여 캘린더 CSS의 간섭을 받지 않음
                 if c2.button("완료", key=f"done_day_{s['id']}", type="primary", use_container_width=True):
                     st.session_state.completed_schedule_ids.add(s["id"])
                     complete_schedule(s["id"], date.today(), s["cycle_days"])
