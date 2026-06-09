@@ -89,9 +89,9 @@ with tab_medication:
     if cycle == "매주":
         sub_opt = st.multiselect("요일 선택", ["월", "화", "수", "목", "금", "토", "일"])
     elif cycle == "매월":
-        sub_opt = st.number_input("매월 며칠에 복용?", 1, 31, 1)
+        sub_opt = st.number_input("날짜 선택", 1, 31, 1)
     elif cycle == "매년":
-        sub_opt = st.date_input("매년 언제 복용?")
+        sub_opt = st.date_input("날짜 선택")
             
     end_date = st.date_input("반복 종료일")
     
@@ -119,7 +119,7 @@ with tab_medication:
                 
                 if should_take:
                     if st.checkbox(f"{med['name']} ({med['cycle']})", key=f"check_{idx}"):
-                        st.toast(f"{med['name']} 복용 완료! 잘하셨어요 🐾", icon="✅")
+                        st.toast(f"{med['name']}  복용 완료! 🐾", icon="✅")
         
         st.write("---")
         for idx, med in enumerate(st.session_state.med_list):
